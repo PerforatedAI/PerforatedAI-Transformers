@@ -3126,9 +3126,11 @@ class Trainer:
             if self.args.save_strategy == SaveStrategy.BEST:
                 self.control.should_save = is_new_best_metric
 
+        '''
         if self.control.should_save:
             self._save_checkpoint(model, trial)
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+        '''
         return model, trainingComplete
     def _load_rng_state(self, checkpoint):
         # Load RNG states from `checkpoint`
