@@ -8,7 +8,7 @@ Run Perforated with
 
 Width settings can be changed on line 452 to produce a graph like the following:
 
-![GRU Processor](processorExample.png "GRU Processor")
+![BERT](BERT.png "BERT")
     
 
 
