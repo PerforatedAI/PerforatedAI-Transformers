@@ -2,7 +2,8 @@
 
 This BERT example shows the compression capabilities on the non-pretrained version of BERT on the WikiText Dataset.
 
-Run Perforated with 
+Run Perforated AI mlm with:
+
     export HF_HOME=./data
     CUDA_VISIBLE_DEVICES=1 python run_mlm_perforatedai.py --model_name_or_path bert-base-uncased --dataset_name wikitext --dataset_config_name wikitext-2-raw-v1 --per_device_train_batch_size 2 --per_device_eval_batch_size 2 --do_train --do_eval --output_dir /tmp/test-mlm --cache_dir ./data --overwrite_output_dir
 
