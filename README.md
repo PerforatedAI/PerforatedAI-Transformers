@@ -3,6 +3,14 @@
 This is a fork of the main branch that has Perforated Backpropagation code where it is required.  Specifically the following files have modifications.
 
 
+## src/transformers/trainer.py
+
+The changes to trainer.py are the main difference between the original transformers repo and the one that can be used with Perforated AI.  The change is simple, but precise.  We have only made the adjustment to the training and validation loop with the changes that would normally be in your code so that it is done automatically within the huggingface trainer.
+
+## examples/pytorch/language-modeling/run_mlm_perforatedai.py
+
+We have created a new example which shows perforated ai being used to improve one of the official huggingface examples.  A non-pretrained BERT can be improved by 12% while also requiring up to an 89% reduction in memory.
+
 
 <!---
 Copyright 2020 The HuggingFace Team. All rights reserved.
