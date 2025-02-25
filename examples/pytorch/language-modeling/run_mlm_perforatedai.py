@@ -283,6 +283,7 @@ def main():
 
     training_args.num_train_epochs = 1000000.0
     training_args.eval_strategy = "steps"
+    training_args.logging_first_step = False
     training_args.eval_steps = 500
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
@@ -449,7 +450,7 @@ def main():
         )
 
     
-    width = 0.125
+    width = (1/8)
     config.hidden_size = int(config.hidden_size*width)
     config.intermediate_size = int(config.intermediate_size*width)
     #config.max_position_embeddings = int(config.max_position_embeddings*width)
@@ -485,9 +486,7 @@ def main():
     PBG.moduleNamesToConvert.append('BertOnlyMLMHead')
     PBG.moduleNamesToConvert.append('BertEmbeddings')    
     
-    PBG.saveName = 'BERTPB'
-
-
+    PBG.saveName = 'BERTPB' + str(width) + '-' + str(training_args.seed)
     
     model = PBU.convertNetwork(model)
     

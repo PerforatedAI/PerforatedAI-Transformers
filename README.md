@@ -9,7 +9,7 @@ The changes to trainer.py are the main difference between the original transform
 
 ## examples/pytorch/language-modeling/run_mlm_perforatedai.py
 
-We have created a new example which shows perforated ai being used to improve one of the official huggingface examples.  A non-pretrained BERT can be improved by 12% while also requiring up to an 89% reduction in memory.
+We have created a new example which shows perforated ai being used to improve one of the official huggingface examples.  A non-pretrained BERT at width 1/8 can be trained with dendrites to the same accuracy as the optimizal tested width of 1/2 with 25% the total final parameter count.
 
 
 <!---
