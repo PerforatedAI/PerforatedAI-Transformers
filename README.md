@@ -297,7 +297,7 @@ If you'd like to play with the examples or need the bleeding edge of the code an
 ```
 git clone https://github.com/huggingface/transformers.git
 cd transformers
-pip install
+pip install .
 ```
 
 ### With conda
