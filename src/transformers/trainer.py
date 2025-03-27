@@ -3102,7 +3102,7 @@ class Trainer:
         trainingComplete = False
         if self.control.should_evaluate:
             metrics = self._evaluate(trial, ignore_keys_for_eval)
-            self.model, restructured, trainingComplete = PBG.pbTracker.addValidationScore(metrics['eval_loss'], model, PBG.saveName)
+            self.model, restructured, trainingComplete = PBG.pbTracker.addValidationScore(metrics['eval_loss'], model)
             model = self.model
             if(restructured):
                 self.optimizer = None
