@@ -181,10 +181,6 @@ from .utils.deprecation import deprecate_kwarg
 from .utils.quantization_config import QuantizationMethod
 
 from perforatedai import pb_globals as PBG
-from perforatedai import pb_models as PBM
-from perforatedai import pb_utils as PBU
-
-
 
 DEFAULT_CALLBACKS = [DefaultFlowCallback]
 DEFAULT_PROGRESS_CALLBACK = ProgressCallback
@@ -3106,7 +3102,7 @@ class Trainer:
         trainingComplete = False
         if self.control.should_evaluate:
             metrics = self._evaluate(trial, ignore_keys_for_eval)
-            self.model, improved, restructured, trainingComplete = PBG.pbTracker.addValidationScore(metrics['eval_loss'], model, PBG.saveName)
+            self.model, restructured, trainingComplete = PBG.pbTracker.addValidationScore(metrics['eval_loss'], model, PBG.saveName)
             model = self.model
             if(restructured):
                 self.optimizer = None
