@@ -3076,8 +3076,8 @@ class Trainer:
 
     def _maybe_log_save_evaluate(self, tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time):
         if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
-            if is_torch_xla_available():
-                xm.mark_step()
+            # if is_torch_xla_available():
+            #     xm.mark_step()
 
             logs: Dict[str, float] = {}
 
@@ -3102,7 +3102,11 @@ class Trainer:
         trainingComplete = False
         if self.control.should_evaluate:
             metrics = self._evaluate(trial, ignore_keys_for_eval)
-            self.model, restructured, trainingComplete = PBG.pbTracker.addValidationScore(metrics['eval_loss'], model)
+            pb_metric = getattr(PBG, 'metric', 'eval_loss')
+            score = metrics.get(pb_metric, metrics.get('eval_loss'))
+            print(f"Using metric for PB: {pb_metric}, score: {score}")
+            self.model, improved, restructured, trainingComplete = PBG.pbTracker.addValidationScore(score, model, PBG.saveName)
+
             model = self.model
             if(restructured):
                 self.optimizer = None
