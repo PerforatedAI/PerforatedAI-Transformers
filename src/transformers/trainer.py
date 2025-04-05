@@ -3105,7 +3105,7 @@ class Trainer:
             pb_metric = getattr(PBG, 'metric', 'eval_loss')
             score = metrics.get(pb_metric, metrics.get('eval_loss'))
             print(f"Using metric for PB: {pb_metric}, score: {score}")
-            self.model, improved, restructured, trainingComplete = PBG.pbTracker.addValidationScore(score, model, PBG.saveName)
+            self.model, restructured, trainingComplete = PBG.pbTracker.addValidationScore(score, model)
 
             model = self.model
             if(restructured):
