@@ -181,6 +181,7 @@ from .utils.deprecation import deprecate_kwarg
 from .utils.import_utils import requires
 from .utils.quantization_config import QuantizationMethod
 
+from perforatedai import globals_perforatedai as GPA
 
 DEFAULT_CALLBACKS = [DefaultFlowCallback]
 DEFAULT_PROGRESS_CALLBACK = ProgressCallback
@@ -424,6 +425,7 @@ class Trainer:
         optimizers: tuple[Optional[torch.optim.Optimizer], Optional[torch.optim.lr_scheduler.LambdaLR]] = (None, None),
         optimizer_cls_and_kwargs: Optional[tuple[type[torch.optim.Optimizer], dict[str, Any]]] = None,
         preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+        using_perforatedai: bool = False,
     ):
         if args is None:
             output_dir = "tmp_trainer"
@@ -448,6 +450,12 @@ class Trainer:
 
         self.args = args
         self.compute_loss_func = compute_loss_func
+        self.using_perforatedai = using_perforatedai
+        
+        # When using PerforatedAI, disable automatic saving to avoid conflicts
+        if self.using_perforatedai:
+            self.args.save_strategy = SaveStrategy.NO
+        
         # Seed must be set before instantiating the model when using model
         enable_full_determinism(self.args.seed) if self.args.full_determinism else set_seed(self.args.seed)
 
@@ -676,9 +684,9 @@ class Trainer:
                 "You should subclass `Trainer` and override the `create_optimizer_and_scheduler` method."
             )
         default_callbacks = DEFAULT_CALLBACKS + get_reporting_integration_callbacks(self.args.report_to)
-        callbacks = default_callbacks if callbacks is None else default_callbacks + callbacks
+        self.callbacks = default_callbacks if callbacks is None else default_callbacks + callbacks
         self.callback_handler = CallbackHandler(
-            callbacks, self.model, self.processing_class, self.optimizer, self.lr_scheduler
+            self.callbacks, self.model, self.processing_class, self.optimizer, self.lr_scheduler
         )
         self.add_callback(PrinterCallback if self.args.disable_tqdm else DEFAULT_PROGRESS_CALLBACK)
 
@@ -2429,6 +2437,7 @@ class Trainer:
             self.optimizer, self.lr_scheduler = deepspeed_init(self, num_training_steps=max_steps)
 
         if not delay_optimizer_creation:
+            self.max_steps = max_steps
             self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
         self.state = TrainerState(
@@ -2464,6 +2473,7 @@ class Trainer:
                 self._fsdp_qlora_plugin_updates()
                 if self.accelerator.mixed_precision != "fp8":
                     self.model = self.accelerator.prepare(self.model)
+            self.max_steps = max_steps
             self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
         # prepare using `accelerator` prepare
@@ -2559,6 +2569,7 @@ class Trainer:
         for attr in ("model", "optimizer", "lr_scheduler"):
             setattr(self.callback_handler, attr, getattr(self, attr))
         self.callback_handler.train_dataloader = train_dataloader
+        self._train_dataloader = train_dataloader  # Store for access after restructuring
 
         self.state.init_training_references(self, max_steps, num_train_epochs, trial)
 
@@ -2575,7 +2586,9 @@ class Trainer:
         if args.eval_on_start:
             self._evaluate(trial, ignore_keys_for_eval, skip_scheduler=True)
 
-        for epoch in range(epochs_trained, num_train_epochs):
+        if self.using_perforatedai:
+            GPA.pai_tracker.set_optimizer_instance(self.optimizer)
+        for epoch in range(epochs_trained, 100000000 if self.using_perforatedai else num_train_epochs):
             epoch_dataloader = train_dataloader
             if hasattr(epoch_dataloader, "set_epoch"):
                 epoch_dataloader.set_epoch(epoch)
@@ -2592,6 +2605,7 @@ class Trainer:
             self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
 
             step = -1
+            trainingComplete = False
             rng_to_sync = False
 
             # Handle resumption from checkpoint
@@ -2753,7 +2767,7 @@ class Trainer:
                         self.state.global_step += 1
                         self.state.epoch = epoch + (step + 1) / steps_in_epoch
                         self.control = self.callback_handler.on_step_end(args, self.state, self.control)
-                        self._maybe_log_save_evaluate(
+                        model, trainingComplete = self._maybe_log_save_evaluate(
                             tr_loss,
                             grad_norm,
                             model,
@@ -2769,12 +2783,12 @@ class Trainer:
                     # PyTorch/XLA relies on the data loader to insert the mark_step for
                     # each step. Since we are breaking the loop early, we need to manually
                     # insert the mark_step here.
-                    if self.control.should_epoch_stop or self.control.should_training_stop:
+                    if trainingComplete or (not self.using_perforatedai and (self.control.should_epoch_stop or self.control.should_training_stop)):
                         if is_torch_xla_available():
                             xm.mark_step()
                         break
                 # We also need to break out of the nested loop
-                if self.control.should_epoch_stop or self.control.should_training_stop:
+                if trainingComplete or (not self.using_perforatedai and (self.control.should_epoch_stop or self.control.should_training_stop)):
                     if is_torch_xla_available():
                         xm.mark_step()
                     break
@@ -2787,7 +2801,7 @@ class Trainer:
                 self.control.should_training_stop = True
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(
+            model, trainingComplete = self._maybe_log_save_evaluate(
                 tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time, learning_rate=learning_rate
             )
 
@@ -2800,7 +2814,7 @@ class Trainer:
                         "You enabled PyTorch/XLA debug metrics but you don't have a TPU "
                         "configured. Check your training configuration if this is unexpected."
                     )
-            if self.control.should_training_stop:
+            if trainingComplete or (not self.using_perforatedai and self.control.should_training_stop):
                 break
 
         if args.past_index and hasattr(self, "_past"):
@@ -3191,8 +3205,8 @@ class Trainer:
         self, tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time, learning_rate=None
     ):
         if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
-            if is_torch_xla_available():
-                xm.mark_step()
+            #if is_torch_xla_available():
+            #    xm.mark_step()
 
             logs: dict[str, float] = {}
 
@@ -3217,8 +3231,67 @@ class Trainer:
             self.log(logs, start_time)
 
         metrics = None
+        trainingComplete = False
         if self.control.should_evaluate:
             metrics = self._evaluate(trial, ignore_keys_for_eval)
+            
+            if self.using_perforatedai:
+
+                # Get metric values
+                eval_accuracy = metrics.get('eval_accuracy')
+                eval_loss = metrics.get('eval_loss')
+                train_loss_avg = self._total_loss_scalar / self.state.global_step if self.state.global_step > 0 else 0
+                
+                # Map score names to their values and labels
+                score_map = {
+                    'eval_accuracy': (eval_accuracy, 'Eval Accuracy'),
+                    'eval_loss': (eval_loss, 'Eval Loss'),
+                    'train_loss': (train_loss_avg, 'Train Loss')
+                }
+                
+                for score_name, (score_value, score_label) in score_map.items():
+                    if score_value is None:
+                        continue
+                    
+                    if score_name in GPA.pc.get_library_extra_scores():
+                        GPA.pai_tracker.add_extra_score(score_value, score_label)
+                    if score_name in GPA.pc.get_library_extra_scores_without_graphing():
+                        GPA.pai_tracker.add_extra_score_without_graphing(score_value, score_label)
+                    if score_name == GPA.pc.get_library_validation_score():
+                        self.model, restructured, trainingComplete = GPA.pai_tracker.add_validation_score(score_value, model)
+                        print(f"Using metric for PB: {score_name}, score: {score_value}")                
+
+                model = self.model
+                if(restructured):
+                    self.optimizer = None
+                    self.lr_scheduler = None
+                    self.create_optimizer_and_scheduler(num_training_steps=self.max_steps)
+                    self.callback_handler.optimizer = self.optimizer
+                    self.callback_handler = CallbackHandler(
+                        self.callbacks, self.model, self.tokenizer, self.optimizer, self.lr_scheduler
+                    )
+                    # Set train_dataloader for progress callback
+                    if hasattr(self, '_train_dataloader'):
+                        self.callback_handler.train_dataloader = self._train_dataloader
+                    self.model.train()
+                    if hasattr(self.lr_scheduler, "step"):
+                        if self.use_apex:
+                            model = self.accelerator.prepare(self.model)
+                        else:
+                            model, self.optimizer = self.accelerator.prepare(self.model, self.optimizer)
+                    else:
+                        # to handle cases wherein we pass "DummyScheduler" such as when it is specified in DeepSpeed config.
+                        model, self.optimizer, self.lr_scheduler = self.accelerator.prepare(
+                            self.model, self.optimizer, self.lr_scheduler
+                        )
+
+
+                    GPA.pai_tracker.set_optimizer_instance(self.optimizer)
+                self.model_wrapped = self.model
+                self.callback_handler.model = self.model
+                self._move_model_to_device(self.model, self.args.device)            
+            
+
             is_new_best_metric = self._determine_best_metric(metrics=metrics, trial=trial)
 
             if self.args.save_strategy == SaveStrategy.BEST:
@@ -3227,6 +3300,8 @@ class Trainer:
         if self.control.should_save:
             self._save_checkpoint(model, trial)
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+        
+        return model, trainingComplete
 
     def _load_rng_state(self, checkpoint):
         # Load RNG states from `checkpoint`
