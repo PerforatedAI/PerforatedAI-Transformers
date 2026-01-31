@@ -586,10 +586,9 @@ class TensorBoardCallback(TrainerCallback):
                 "TensorBoardCallback requires tensorboard to be installed. Either update your PyTorch version or"
                 " install tensorboardX."
             )
-        try:
-            from torch.utils.tensorboard import SummaryWriter
-        except ImportError:
-            from tensorboardX import SummaryWriter
+        if has_tensorboard:
+            try:
+                from torch.utils.tensorboard import SummaryWriter
 
         self._SummaryWriter = SummaryWriter
         self.tb_writer = tb_writer

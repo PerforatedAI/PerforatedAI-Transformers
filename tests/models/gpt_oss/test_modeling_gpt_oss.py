@@ -61,40 +61,20 @@ class GptOssModelTester(CausalLMModelTester):
 
 @require_torch
 class GptOssModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": GptOssModel,
+            "text-classification": GptOssForSequenceClassification,
+            "text-generation": GptOssForCausalLM,
+            "token-classification": GptOssForTokenClassification,
+        }
+        if is_torch_available()
+        else {}
+    )
+
     _is_stateful = True
     model_split_percents = [0.5, 0.6]
     model_tester_class = GptOssModelTester
-
-    @require_kernels
-    @require_flash_attn
-    @pytest.mark.flash_attn_test
-    @require_torch_gpu
-    def test_initialization_raises_error_for_flash_attn(self):
-        """
-        Tests that initializing the model with unsupported Flash Attention implementations raises a ValueError,
-        but allows the specific vllm kernel.
-        """
-
-        config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
-        kernel_attn = "kernels-community/vllm-flash-attn3"
-
-        # Checking each via `set_attn_implementation` and manually setting within the config
-        model = GptOssModel(config).to(device=torch_device, dtype=torch.bfloat16)
-        model.set_attn_implementation("kernels-community/vllm-flash-attn3")
-        self.assertTrue(model.config._attn_implementation == kernel_attn)
-
-        config._attn_implementation = kernel_attn
-        self.assertTrue(model.config._attn_implementation == kernel_attn)
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-        self.assertIsNotNone(output)
-
-        with self.assertRaisesRegex(ValueError, "GPT-OSS model does not support"):
-            model.set_attn_implementation("flash_attention_2")
-
-        with self.assertRaisesRegex(ValueError, "GPT-OSS model does not support"):
-            config._attn_implementation = "flash_attention_2"
 
     @unittest.skip("GptOss's forcefully disables sdpa due to Sink")
     def test_sdpa_can_dispatch_non_composite_models(self):

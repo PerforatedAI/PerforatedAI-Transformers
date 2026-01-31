@@ -16,6 +16,8 @@
 
 import unittest
 
+from parameterized import parameterized
+
 from transformers import is_torch_available
 from transformers.testing_utils import (
     Expectations,
@@ -49,6 +51,19 @@ class NemotronModelTest(CausalLMModelTest, unittest.TestCase):
     # Need to use `0.8` instead of `0.9` for `test_cpu_offload`
     # This is because we are hitting edge cases with the causal_mask buffer
     model_split_percents = [0.5, 0.7, 0.8]
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": NemotronModel,
+            "text-classification": NemotronForSequenceClassification,
+            "text-generation": NemotronForCausalLM,
+            "zero-shot": NemotronForSequenceClassification,
+            "question-answering": NemotronForQuestionAnswering,
+            "token-classification": NemotronForTokenClassification,
+        }
+        if is_torch_available()
+        else {}
+    )
+    fx_compatible = False
 
     # used in `test_torch_compile_for_training`
     _torch_compile_train_cls = NemotronForCausalLM if is_torch_available() else None

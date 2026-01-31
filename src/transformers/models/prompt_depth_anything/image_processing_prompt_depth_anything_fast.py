@@ -23,7 +23,7 @@ from ...processing_utils import Unpack
 if TYPE_CHECKING:
     from ...modeling_outputs import DepthEstimatorOutput
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils_fast import (
     BaseImageProcessorFast,
@@ -43,7 +43,6 @@ from ...utils import (
     auto_docstring,
     requires_backends,
 )
-from .image_processing_prompt_depth_anything import PromptDepthAnythingImageProcessorKwargs
 
 
 def _constrain_to_multiple_of(val, multiple, min_val=0, max_val=None):

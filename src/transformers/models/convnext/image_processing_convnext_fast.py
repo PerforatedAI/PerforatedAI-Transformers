@@ -16,7 +16,7 @@
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import BaseImageProcessorFast, group_images_by_shape, reorder_images
@@ -34,7 +34,16 @@ from ...utils import (
     TensorType,
     auto_docstring,
 )
-from .image_processing_convnext import ConvNextImageProcessorKwargs
+
+
+class ConvNextFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    """
+    crop_pct (`float`, *optional*):
+        Percentage of the image to crop. Only has an effect if size < 384. Can be
+        overridden by `crop_pct` in the`preprocess` method.
+    """
+
+    crop_pct: Optional[float]
 
 
 @auto_docstring

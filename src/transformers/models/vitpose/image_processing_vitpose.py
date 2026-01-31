@@ -391,8 +391,8 @@ class VitPoseImageProcessor(BaseImageProcessor):
         scale: tuple[float],
         rotation: float,
         size: dict[str, int],
-        data_format: ChannelDimension | None = None,
-        input_data_format: str | ChannelDimension | None = None,
+        data_format: Optional[ChannelDimension] = None,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
     ) -> np.ndarray:
         """
         Apply an affine transformation to an image.

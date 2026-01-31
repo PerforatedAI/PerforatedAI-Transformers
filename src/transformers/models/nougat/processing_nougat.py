@@ -46,14 +46,16 @@ class NougatProcessor(ProcessorMixin):
         image_mean: float | list[float] | None = None,
         image_std: float | list[float] | None = None,
         data_format: Optional["ChannelDimension"] = "channels_first",  # noqa: F821
-        input_data_format: Union[str, "ChannelDimension"] | None = None,  # noqa: F821
-        text_pair: TextInput | PreTokenizedInput | list[TextInput] | list[PreTokenizedInput] | None = None,
-        text_target: TextInput | PreTokenizedInput | list[TextInput] | list[PreTokenizedInput] | None = None,
-        text_pair_target: TextInput | PreTokenizedInput | list[TextInput] | list[PreTokenizedInput] | None = None,
+        input_data_format: Optional[Union[str, "ChannelDimension"]] = None,  # noqa: F821
+        text_pair: Optional[Union[TextInput, PreTokenizedInput, list[TextInput], list[PreTokenizedInput]]] = None,
+        text_target: Optional[Union[TextInput, PreTokenizedInput, list[TextInput], list[PreTokenizedInput]]] = None,
+        text_pair_target: Optional[
+            Union[TextInput, PreTokenizedInput, list[TextInput], list[PreTokenizedInput]]
+        ] = None,
         add_special_tokens: bool = True,
-        padding: bool | str | PaddingStrategy = False,
-        truncation: bool | str | TruncationStrategy | None = None,
-        max_length: int | None = None,
+        padding: Union[bool, str, PaddingStrategy] = False,
+        truncation: Optional[Union[bool, str, TruncationStrategy]] = None,
+        max_length: Optional[int] = None,
         stride: int = 0,
         is_split_into_words: bool = False,
         pad_to_multiple_of: int | None = None,

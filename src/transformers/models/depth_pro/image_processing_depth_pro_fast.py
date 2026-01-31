@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from .modeling_depth_pro import DepthProDepthEstimatorOutput
 
 
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 
 logger = logging.get_logger(__name__)

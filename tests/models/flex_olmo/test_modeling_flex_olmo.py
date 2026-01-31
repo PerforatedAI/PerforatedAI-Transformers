@@ -15,6 +15,8 @@
 
 import unittest
 
+import pytest
+
 from transformers import is_torch_available
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.testing_utils import (
@@ -44,6 +46,17 @@ class FlexOlmoModelTester(CausalLMModelTester):
 
 @require_torch
 class FlexOlmoModelTest(CausalLMModelTest, unittest.TestCase):
+    all_model_classes = (FlexOlmoModel, FlexOlmoForCausalLM) if is_torch_available() else ()
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": FlexOlmoModel,
+            "text-generation": FlexOlmoForCausalLM,
+        }
+        if is_torch_available()
+        else {}
+    )
+    fx_compatible = False
+    test_torchscript = False
     test_all_params_have_gradient = False
     model_tester_class = FlexOlmoModelTester
 

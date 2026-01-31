@@ -245,7 +245,7 @@ def get_size_with_aspect_ratio(image_size, size, max_size=None) -> tuple[int, in
 # Logic adapted from torchvision resizing logic: https://github.com/pytorch/vision/blob/511924c1ced4ce0461197e5caa64ce5b9e558aab/torchvision/transforms/functional.py#L366
 def get_resize_output_image_size(
     input_image: np.ndarray,
-    size: int | tuple[int, int] | list[int] | tuple[int, ...],
+    size: Union[int, tuple[int, int], list[int], tuple[int, ...]],
     default_to_square: bool = True,
     max_size: int | None = None,
     input_data_format: str | ChannelDimension | None = None,
@@ -314,8 +314,8 @@ def resize(
     image: np.ndarray,
     size: tuple[int, int],
     resample: Optional["PILImageResampling"] = None,
-    reducing_gap: int | None = None,
-    data_format: ChannelDimension | None = None,
+    reducing_gap: Optional[int] = None,
+    data_format: Optional[ChannelDimension] = None,
     return_numpy: bool = True,
     input_data_format: str | ChannelDimension | None = None,
 ) -> np.ndarray:

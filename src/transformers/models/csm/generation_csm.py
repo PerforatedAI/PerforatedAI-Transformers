@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -88,7 +88,7 @@ class CsmGenerationMixin(GenerationMixin):
         return kept_criteria
 
     def _prepare_generation_config(
-        self, generation_config: GenerationConfig | None, **kwargs: Any
+        self, generation_config: Optional[GenerationConfig], use_model_defaults: Optional[bool] = None, **kwargs: Any
     ) -> tuple[GenerationConfig, dict]:
         """
         This method overrides [~generation.utils.GenerationMixin._prepare_generation_config].

@@ -40,13 +40,7 @@ This guide covers enabling tensor parallelism in Transformers and the available 
 
 ## Partitioning a model
 
-Transformers enables tensor parallelism when a model has a `tp_plan`. Choose from two partitioning methods.
-
-- Set `tp_plan="auto"` for an automatic plan based on the model's predefined configuration.
-- Define and pass a manual `tp_plan`.
-
-<hfoptions id="tp_plan">
-<hfoption id="auto plan">
+Transformers supports tensor parallelism if a model has a `tp_plan`. Set `tp_plan="auto"` to automatically use a tensor parallelism plan based on a model's predefined configuration.
 
 ```py
 import os
@@ -70,31 +64,6 @@ Launch the inference script with [torchrun](https://pytorch.org/docs/stable/elas
 ```bash
 torchrun --nproc-per-node 4 demo.py
 ```
-
-</hfoption>
-<hfoption id="manual plan">
-
-Define a tensor parallel plan for each layer in `tp_plan`. Pass it to [`~PreTrainedModel.from_pretrained`]. The example below uses column and row partitioning. See the [Partitioning strategies](#partitioning-strategies) section for other supported strategies.
-
-Manual partitioning requires a deep understanding of model architecture and strategy interactions. Poor partitioning choices create slow models that fail or produce incorrect results. The [Ultra-Scale Playbook](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=tensor_parallelism) explains partitioning strategies in detail.
-
-```py
-from transformers import AutoModelForCausalLM
-
-tp_plan = {
-    "model.layers.*.self_attn.q_proj": "colwise",
-    "model.layers.*.self_attn.k_proj": "colwise",
-    "model.layers.*.self_attn.v_proj": "colwise",
-    "model.layers.*.self_attn.o_proj": "rowwise",
-    ...
-}
-
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", dtype="auto", tp_plan=tp_plan)
-print(model.tp_plan)
-```
-
-</hfoption>
-</hfoptions>
 
 ## Partitioning strategies
 

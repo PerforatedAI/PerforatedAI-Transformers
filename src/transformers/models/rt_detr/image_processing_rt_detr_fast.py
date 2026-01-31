@@ -8,7 +8,7 @@ import pathlib
 from typing import Any, Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import (
@@ -32,7 +32,24 @@ from ...image_utils import (
 from ...processing_utils import Unpack
 from ...utils import TensorType, auto_docstring, requires_backends
 from ...utils.import_utils import requires
-from .image_processing_rt_detr import RTDetrImageProcessorKwargs, get_size_with_aspect_ratio
+from .image_processing_rt_detr import get_size_with_aspect_ratio
+
+
+class RTDetrFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    r"""
+    format (`str`, *optional*, defaults to `AnnotationFormat.COCO_DETECTION`):
+        Data format of the annotations. One of "coco_detection" or "coco_panoptic".
+    do_convert_annotations (`bool`, *optional*, defaults to `True`):
+        Controls whether to convert the annotations to the format expected by the RT_DETR model. Converts the
+        bounding boxes to the format `(center_x, center_y, width, height)` and in the range `[0, 1]`.
+        Can be overridden by the `do_convert_annotations` parameter in the `preprocess` method.
+    return_segmentation_masks (`bool`, *optional*, defaults to `False`):
+        Whether to return segmentation masks.
+    """
+
+    format: Optional[Union[str, AnnotationFormat]]
+    do_convert_annotations: Optional[bool]
+    return_segmentation_masks: Optional[bool]
 
 
 SUPPORTED_ANNOTATION_FORMATS = (AnnotationFormat.COCO_DETECTION, AnnotationFormat.COCO_PANOPTIC)
@@ -223,7 +240,7 @@ class RTDetrImageProcessorFast(BaseImageProcessorFast):
             resample (`InterpolationMode`, defaults to `tvF.InterpolationMode.NEAREST_EXACT`):
                 The resampling filter to use when resizing the masks.
         """
-        interpolation = interpolation if interpolation is not None else tvF.InterpolationMode.NEAREST_EXACT
+        interpolation = interpolation if interpolation is not None else F.InterpolationMode.NEAREST_EXACT
         ratio_height, ratio_width = [target / orig for target, orig in zip(target_size, orig_size)]
 
         new_annotation = {}

@@ -15,7 +15,7 @@
 
 # /// script
 # dependencies = [
-#     "transformers @ git+https://github.com/huggingface/transformers.git",
+#     "transformers==4.57.5",
 #     "datasets[audio] >= 1.18.0",
 #     "torch >= 1.5",
 #     "torchaudio",
@@ -52,13 +52,13 @@ from transformers import (
     Seq2SeqTrainingArguments,
     set_seed,
 )
-from transformers.trainer_utils import is_main_process
+from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.57.0.dev0")
+check_min_version("4.57.0")
 
 require_version(
     "datasets>=1.18.0",
@@ -77,15 +77,15 @@ class ModelArguments:
     model_name_or_path: str = field(
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
-    config_name: str | None = field(
+    config_name: Optional[str] = field(
         default=None,
         metadata={"help": "Pretrained config name or path if not the same as model_name"},
     )
-    tokenizer_name: str | None = field(
+    tokenizer_name: Optional[str] = field(
         default=None,
         metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"},
     )
-    feature_extractor_name: str | None = field(
+    feature_extractor_name: Optional[str] = field(
         default=None,
         metadata={"help": "feature extractor name or path if not the same as model_name"},
     )
@@ -127,6 +127,19 @@ class ModelArguments:
     freeze_encoder: bool = field(
         default=False,
         metadata={"help": "Whether to freeze the entire encoder of the seq2seq model."},
+    )
+    forced_decoder_ids: list[list[int]] = field(
+        default=None,
+        metadata={"help": "Deprecated. Please use the `language` and `task` arguments instead."},
+    )
+    suppress_tokens: list[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Deprecated. The use of `suppress_tokens` should not be required for the majority of fine-tuning examples."
+                "Should you need to use `suppress_tokens`, please manually update them in the fine-tuning script directly."
+            )
+        },
     )
     apply_spec_augment: bool = field(
         default=False,
@@ -381,9 +394,17 @@ def main():
     if getattr(config, "model_type", None) == "whisper":
         config.update({"apply_spec_augment": model_args.apply_spec_augment})
 
-    processor = AutoProcessor.from_pretrained(
-        model_args.model_name_or_path,
+    feature_extractor = AutoFeatureExtractor.from_pretrained(
+        (model_args.feature_extractor_name if model_args.feature_extractor_name else model_args.model_name_or_path),
         cache_dir=model_args.cache_dir,
+        revision=model_args.model_revision,
+        token=model_args.token,
+        trust_remote_code=model_args.trust_remote_code,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        (model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path),
+        cache_dir=model_args.cache_dir,
+        use_fast=model_args.use_fast_tokenizer,
         revision=model_args.model_revision,
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
@@ -426,7 +447,7 @@ def main():
     if dataset_sampling_rate != processor.feature_extractor.sampling_rate:
         raw_datasets = raw_datasets.cast_column(
             data_args.audio_column_name,
-            datasets.features.Audio(sampling_rate=processor.feature_extractor.sampling_rate),
+            datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate),
         )
 
     # 7. Preprocessing the datasets.
@@ -454,7 +475,7 @@ def main():
     def prepare_dataset(batch):
         # process audio
         sample = batch[audio_column_name]
-        inputs = processor.feature_extractor(
+        inputs = feature_extractor(
             sample["array"],
             sampling_rate=sample["sampling_rate"],
             return_attention_mask=forward_attention_mask,

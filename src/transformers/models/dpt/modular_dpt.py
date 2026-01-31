@@ -40,7 +40,7 @@ from .image_processing_dpt import DPTImageProcessorKwargs
 if TYPE_CHECKING:
     from ...modeling_outputs import DepthEstimatorOutput
 
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 
 def get_resize_output_image_size(

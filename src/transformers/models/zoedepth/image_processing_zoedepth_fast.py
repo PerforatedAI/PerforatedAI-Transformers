@@ -20,7 +20,7 @@ from typing import (
 
 import numpy as np
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import (
     BatchFeature,

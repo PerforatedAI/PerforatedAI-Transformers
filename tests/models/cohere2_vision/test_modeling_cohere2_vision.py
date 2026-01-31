@@ -168,6 +168,7 @@ class Cohere2ModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMi
         self.config_tester.run_common_tests()
 
 
+@require_read_token
 @require_torch
 class Cohere2IntegrationTest(unittest.TestCase):
     def setUp(self):

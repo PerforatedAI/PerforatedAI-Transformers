@@ -1386,10 +1386,10 @@ class FPQuantConfig(QuantizationConfigMixin):
         forward_method: str = "abs_max",
         backward_dtype: str = "bf16",
         store_master_weights: bool = False,
-        hadamard_group_size: int | None = None,
+        hadamard_group_size: Optional[int] = None,
         pseudoquantization: bool = False,
         transform_init: str = "hadamard",
-        modules_to_not_convert: list[str] | None = None,
+        modules_to_not_convert: Optional[list[str]] = None,
         **kwargs,
     ):
         self.forward_dtype = forward_dtype
@@ -1432,12 +1432,8 @@ class FPQuantConfig(QuantizationConfigMixin):
         else:
             raise ValueError("Only 'mxfp4' and 'nvfp4' are supported for forward_dtype for now.")
 
-        if self.backward_dtype not in ["bf16", "mxfp8", "mxfp4"]:
-            raise ValueError("Only 'bf16', 'mxfp8' and 'mxfp4' are supported for backward_dtype for now.")
-
-        if self.backward_dtype != "bf16" and self.forward_dtype != "mxfp4":
-            raise ValueError("Only 'mxfp4' forward is compatible with non-bf16 backwards for now.")
-
+        if self.backward_dtype != "bf16":
+            raise ValueError("Only 'bf16' is supported for backward_dtype for now.")
         if self.transform_init not in ["hadamard", "identity", "gsr"]:
             raise ValueError("Only 'hadamard', 'identity' and 'gsr' are supported for transform_init.")
 
@@ -1714,11 +1710,11 @@ class BitNetQuantConfig(QuantizationConfigMixin):
 
     def __init__(
         self,
-        modules_to_not_convert: list | None = None,
+        modules_to_not_convert: Optional[list] = None,
         linear_class: str = "bitlinear",
         quantization_mode: str = "offline",
         use_rms_norm: bool = False,
-        rms_norm_eps: float | None = 1e-6,
+        rms_norm_eps: Optional[float] = 1e-6,
         **kwargs,
     ):
         if linear_class not in ["bitlinear", "autobitlinear"]:
@@ -1838,7 +1834,7 @@ class FineGrainedFP8Config(QuantizationConfigMixin):
         Safety checker that arguments are correct
         """
         self.activation_scheme = self.activation_scheme.lower()
-        if self.activation_scheme not in ["dynamic", "static"]:
+        if self.activation_scheme != "dynamic":
             raise ValueError(f"Activation scheme {self.activation_scheme} not supported")
         if self.weight_block_size is not None and len(self.weight_block_size) != 2:
             raise ValueError("weight_block_size must be a tuple of two integers")

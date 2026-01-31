@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from .base import HfQuantizer
 
@@ -107,6 +107,79 @@ class FbgemmFp8HfQuantizer(HfQuantizer):
             else:
                 return True
         return False
+
+    def create_quantized_param(
+        self,
+        model: "PreTrainedModel",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        **kwargs,
+    ):
+        from ..integrations import FbgemmFp8Linear, FbgemmFp8Llama4TextExperts
+
+        module, tensor_name = get_module_from_name(model, param_name)
+
+        # Sanity checks
+        if isinstance(module, FbgemmFp8Linear):
+            if self.pre_quantized or tensor_name == "bias":
+                if tensor_name == "weight" and param_value.dtype != torch.float8_e4m3fn:
+                    raise ValueError("Expect quantized weights but got an unquantized weight")
+            else:
+                if tensor_name == "weight_scale":
+                    raise ValueError("Expect unquantized weights but got a quantized weight_scale")
+        if isinstance(module, FbgemmFp8Llama4TextExperts):
+            if not (self.pre_quantized or tensor_name == "bias"):
+                if tensor_name == "gate_up_proj_scale" or tensor_name == "down_proj_scale":
+                    raise ValueError("Expect unquantized weights but got a quantized weight_scale")
+
+        if isinstance(module, FbgemmFp8Llama4TextExperts):
+            if tensor_name == "gate_up_proj":
+                # Process each expert separately
+                # Transpose the second and third dimension
+                transposed_param = param_value.transpose(1, 2)
+
+                # Reshape to 2D for quantization
+                original_shape = transposed_param.shape
+                flattened_param = transposed_param.reshape(-1, original_shape[-1])
+
+                # Quantize using per row instead of per column
+                new_value_flat, weight_scale_flat = torch.ops.fbgemm.quantize_fp8_per_row(flattened_param)
+
+                # Reshape back to original dimensions
+                new_value = new_value_flat.reshape(original_shape)
+                new_value = new_value.transpose(1, 2)
+                weight_scale = weight_scale_flat.reshape(original_shape[0], 1, original_shape[1])
+            elif tensor_name == "down_proj":
+                # Process each expert separately
+                # Transpose the weights for proper quantization
+                transposed_param = param_value.transpose(1, 2)
+
+                # Reshape to 2D for quantization
+                original_shape = transposed_param.shape
+                flattened_param = transposed_param.reshape(-1, original_shape[-1])
+
+                # Quantize using per column
+                new_value_flat, weight_scale_flat = torch.ops.fbgemm.quantize_fp8_per_row(flattened_param)
+
+                # Reshape back to original dimensions
+                new_value = new_value_flat.reshape(original_shape)
+                new_value = new_value.transpose(1, 2)
+                weight_scale = weight_scale_flat.reshape(original_shape[0], original_shape[1], 1)
+
+            module._parameters[f"{tensor_name}_scale"] = torch.nn.Parameter(weight_scale.to(target_device))
+        else:
+            new_value, weight_scale = torch.ops.fbgemm.quantize_fp8_per_row(param_value)
+            module._parameters[f"{tensor_name}_scale"] = torch.nn.Parameter(
+                weight_scale.view(weight_scale.shape[0], 1).to(target_device)
+            )
+
+        module._parameters[tensor_name] = torch.nn.Parameter(new_value.to(target_device))
+
+        del param_name
+
+    def _process_model_after_weight_loading(self, model: "PreTrainedModel", **kwargs):
+        return model
 
     def _process_model_before_weight_loading(
         self,

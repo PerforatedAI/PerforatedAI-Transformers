@@ -75,7 +75,7 @@ class ColQwen2Config(PreTrainedConfig):
                     "The `model_type` key is missing in the `vlm_config` dictionary. Please provide the model type."
                 )
             vlm_config = CONFIG_MAPPING[vlm_config["model_type"]](**vlm_config)
-        elif not isinstance(vlm_config, PreTrainedConfig):
+        elif not isinstance(vlm_config, PretrainedConfig):
             raise TypeError(
                 f"Invalid type for `vlm_config`. Expected `PreTrainedConfig`, `dict`, or `None`, but got {type(vlm_config)}."
             )

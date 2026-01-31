@@ -245,7 +245,7 @@ class Message:
                 "type": "plain_text",
                 "text": (
                     f"There were {self.n_failures} failures, out of {self.n_tests} tests.\n"
-                    f"[ERROR] There were {self.n_jobs_errored_out} jobs errored out (not producing test output files).\n"
+                    f"🚨 There were {self.n_jobs_errored_out} jobs errored out (not producing test output files).\n"
                     f"The suite ran in {self.time}."
                 ),
                 "emoji": True,

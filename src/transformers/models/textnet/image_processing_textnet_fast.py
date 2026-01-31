@@ -16,7 +16,7 @@
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import BaseImageProcessorFast
@@ -38,7 +38,15 @@ from ...utils import (
     TensorType,
     auto_docstring,
 )
-from .image_processing_textnet import TextNetImageProcessorKwargs
+
+
+class TextNetFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    """
+    size_divisor (`int`, *optional*, defaults to 32):
+        Ensures height and width are rounded to a multiple of this value after resizing.
+    """
+
+    size_divisor: Optional[int]
 
 
 @auto_docstring

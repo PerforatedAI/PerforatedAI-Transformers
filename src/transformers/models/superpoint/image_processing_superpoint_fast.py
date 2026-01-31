@@ -39,6 +39,8 @@ from .image_processing_superpoint import SuperPointImageProcessorKwargs
 if TYPE_CHECKING:
     from .modeling_superpoint import SuperPointKeypointDescriptionOutput
 
+import torchvision.transforms.v2.functional as F
+
 
 def is_grayscale(
     image: "torch.Tensor",

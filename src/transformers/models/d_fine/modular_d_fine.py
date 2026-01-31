@@ -615,6 +615,12 @@ class DFinePreTrainedModel(RTDetrPreTrainedModel):
             if hasattr(module, "up"):
                 init.constant_(module.up, self.config.up)
 
+            if hasattr(module, "reg_scale"):
+                module.reg_scale.fill_(self.config.reg_scale)
+
+            if hasattr(module, "up"):
+                module.up.fill_(self.config.up)
+
         if isinstance(module, DFineMultiscaleDeformableAttention):
             init.constant_(module.sampling_offsets.weight, 0.0)
             default_dtype = torch.get_default_dtype()
@@ -659,8 +665,8 @@ class DFinePreTrainedModel(RTDetrPreTrainedModel):
             init.constant_(module.reg_conf.layers[-1].weight, 0)
 
         if isinstance(module, nn.LayerNorm):
-            init.ones_(module.weight)
-            init.zeros_(module.bias)
+            module.weight.data.fill_(1.0)
+            module.bias.data.zero_()
 
         if hasattr(module, "weight_embedding") and self.config.learn_initial_query:
             init.xavier_uniform_(module.weight_embedding.weight)

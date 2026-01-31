@@ -17,7 +17,7 @@ import warnings
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils_fast import (
     BatchFeature,
@@ -35,6 +35,9 @@ from ...utils import (
     auto_docstring,
 )
 from ..owlvit.image_processing_owlvit_fast import OwlViTImageProcessorFast
+
+
+class Owlv2FastImageProcessorKwargs(DefaultFastImageProcessorKwargs): ...
 
 
 @auto_docstring

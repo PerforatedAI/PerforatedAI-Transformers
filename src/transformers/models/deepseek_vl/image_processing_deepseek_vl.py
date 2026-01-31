@@ -37,7 +37,6 @@ from ...image_utils import (
     valid_images,
     validate_preprocess_arguments,
 )
-from ...processing_utils import ImagesKwargs
 from ...utils import TensorType, filter_out_non_signature_kwargs, is_vision_available, logging
 
 
@@ -357,9 +356,9 @@ class DeepseekVLImageProcessor(BaseImageProcessor):
     def pad_to_square(
         self,
         image: np.ndarray,
-        background_color: int | tuple[int, int, int] = 0,
-        data_format: str | ChannelDimension | None = None,
-        input_data_format: str | ChannelDimension | None = None,
+        background_color: Union[int, tuple[int, int, int]] = 0,
+        data_format: Optional[Union[str, ChannelDimension]] = None,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
     ) -> np.ndarray:
         """
         Pads an image to a square based on the longest edge.

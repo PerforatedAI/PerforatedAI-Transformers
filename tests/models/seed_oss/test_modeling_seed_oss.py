@@ -34,6 +34,9 @@ if is_torch_available():
     import torch
 
     from transformers import (
+        SeedOssForCausalLM,
+        SeedOssForSequenceClassification,
+        SeedOssForTokenClassification,
         SeedOssModel,
     )
 
@@ -46,6 +49,17 @@ class SeedOssModelTester(CausalLMModelTester):
 @require_torch
 class SeedOssModelTest(CausalLMModelTest, unittest.TestCase):
     model_tester_class = SeedOssModelTester
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": SeedOssModel,
+            "text-classification": SeedOssForSequenceClassification,
+            "token-classification": SeedOssForTokenClassification,
+            "text-generation": SeedOssForCausalLM,
+            "zero-shot": SeedOssForSequenceClassification,
+        }
+        if is_torch_available()
+        else {}
+    )
     _is_stateful = True
     model_split_percents = [0.5, 0.6]
 

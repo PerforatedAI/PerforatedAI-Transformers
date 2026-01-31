@@ -22,7 +22,7 @@ import math
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_utils import (
@@ -40,14 +40,14 @@ from ...video_utils import VideoMetadata, group_videos_by_shape, reorder_videos
 from .image_processing_qwen2_vl import smart_resize
 
 
-class Qwen2VLVideoProcessorInitKwargs(VideosKwargs, total=False):
-    min_pixels: int
-    max_pixels: int
-    patch_size: int
-    temporal_patch_size: int
-    merge_size: int
-    min_frames: int
-    max_frames: int
+class Qwen2VLVideoProcessorInitKwargs(VideosKwargs):
+    min_pixels: Optional[int]
+    max_pixels: Optional[int]
+    patch_size: Optional[int]
+    temporal_patch_size: Optional[int]
+    merge_size: Optional[int]
+    min_frames: Optional[int]
+    max_frames: Optional[int]
 
 
 @add_start_docstrings(
@@ -207,12 +207,12 @@ class Qwen2VLVideoProcessor(BaseVideoProcessor):
         do_rescale: bool,
         rescale_factor: float,
         do_normalize: bool,
-        image_mean: float | list[float] | None,
-        image_std: float | list[float] | None,
-        patch_size: int | None = None,
-        temporal_patch_size: int | None = None,
-        merge_size: int | None = None,
-        return_tensors: str | TensorType | None = None,
+        image_mean: Optional[Union[float, list[float]]],
+        image_std: Optional[Union[float, list[float]]],
+        patch_size: Optional[int] = None,
+        temporal_patch_size: Optional[int] = None,
+        merge_size: Optional[int] = None,
+        return_tensors: Optional[Union[str, TensorType]] = None,
         **kwargs,
     ):
         # Group videos by size for batched resizing

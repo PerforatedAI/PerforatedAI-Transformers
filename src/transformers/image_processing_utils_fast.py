@@ -60,9 +60,10 @@ if is_torch_available():
     import torch
 
 if is_torchvision_available():
-    import torchvision.transforms.v2.functional as tvF
+    from torchvision.transforms.v2 import functional as F
 
     from .image_utils import pil_torch_interpolation_mapping
+
 else:
     pil_torch_interpolation_mapping = None
 
@@ -72,17 +73,17 @@ logger = logging.get_logger(__name__)
 
 @lru_cache(maxsize=10)
 def validate_fast_preprocess_arguments(
-    do_rescale: bool | None = None,
-    rescale_factor: float | None = None,
-    do_normalize: bool | None = None,
-    image_mean: float | list[float] | None = None,
-    image_std: float | list[float] | None = None,
-    do_center_crop: bool | None = None,
-    crop_size: SizeDict | None = None,
-    do_resize: bool | None = None,
-    size: SizeDict | None = None,
-    interpolation: Optional["tvF.InterpolationMode"] = None,
-    return_tensors: str | TensorType | None = None,
+    do_rescale: Optional[bool] = None,
+    rescale_factor: Optional[float] = None,
+    do_normalize: Optional[bool] = None,
+    image_mean: Optional[Union[float, list[float]]] = None,
+    image_std: Optional[Union[float, list[float]]] = None,
+    do_center_crop: Optional[bool] = None,
+    crop_size: Optional[SizeDict] = None,
+    do_resize: Optional[bool] = None,
+    size: Optional[SizeDict] = None,
+    interpolation: Optional["F.InterpolationMode"] = None,
+    return_tensors: Optional[Union[str, TensorType]] = None,
     data_format: ChannelDimension = ChannelDimension.FIRST,
 ):
     """
@@ -346,11 +347,10 @@ class BaseImageProcessorFast(BaseImageProcessor):
         self,
         images: list["torch.Tensor"],
         pad_size: SizeDict = None,
-        fill_value: int | None = 0,
-        padding_mode: str | None = "constant",
+        fill_value: Optional[int] = 0,
+        padding_mode: Optional[str] = "constant",
         return_mask: bool = False,
-        disable_grouping: bool | None = False,
-        is_nested: bool | None = False,
+        disable_grouping: Optional[bool] = False,
         **kwargs,
     ) -> Union[tuple["torch.Tensor", "torch.Tensor"], "torch.Tensor"]:
         """
@@ -483,7 +483,7 @@ class BaseImageProcessorFast(BaseImageProcessor):
             # 256 is used on purpose instead of 255 to avoid numerical differences
             # see https://github.com/huggingface/transformers/pull/38540#discussion_r2127165652
             image = image.float() / 256
-            image = tvF.resize(image, new_size, interpolation=interpolation, antialias=antialias)
+            image = F.resize(image, new_size, interpolation=interpolation, antialias=antialias)
             image = image * 256
             # torch.where is used on purpose instead of torch.clamp to avoid bug in torch.compile
             # see https://github.com/huggingface/transformers/pull/38540#discussion_r2126888471

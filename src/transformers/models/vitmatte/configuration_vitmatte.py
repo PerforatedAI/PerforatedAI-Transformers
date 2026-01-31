@@ -13,7 +13,10 @@
 # limitations under the License.
 """VitMatte model configuration"""
 
-from ...configuration_utils import PreTrainedConfig
+import copy
+from typing import Optional
+
+from ...configuration_utils import PretrainedConfig
 from ...utils import logging
 from ...utils.backbone_utils import verify_backbone_config_arguments
 from ..auto.configuration_auto import CONFIG_MAPPING, AutoConfig
@@ -78,7 +81,7 @@ class VitMatteConfig(PreTrainedConfig):
 
     def __init__(
         self,
-        backbone_config: PreTrainedConfig | None = None,
+        backbone_config: Optional[PretrainedConfig] = None,
         backbone=None,
         use_pretrained_backbone=False,
         use_timm_backbone=False,

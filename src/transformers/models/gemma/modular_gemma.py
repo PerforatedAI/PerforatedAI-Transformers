@@ -22,7 +22,6 @@ from ...cache_utils import Cache, DynamicCache
 from ...configuration_utils import PreTrainedConfig
 from ...masking_utils import create_causal_mask
 from ...modeling_outputs import BaseModelOutputWithPast
-from ...modeling_rope_utils import RopeParameters
 from ...modeling_utils import PreTrainedModel
 from ...processing_utils import Unpack
 from ...utils import TransformersKwargs, logging
@@ -217,21 +216,13 @@ class GemmaRotaryEmbedding(LlamaRotaryEmbedding):
     pass
 
 
-class GemmaAttention(LlamaAttention):
-    """Multi-headed attention from 'Attention Is All You Need' paper"""
-
-    def __init__(self, config: GemmaConfig, layer_idx: int):
-        super().__init__()
-        self.is_causal = not getattr(config, "use_bidirectional_attention", False)
-
-
 class GemmaPreTrainedModel(LlamaPreTrainedModel):
-    @torch.no_grad()
     def _init_weights(self, module):
         PreTrainedModel._init_weights(self, module)
+
         # We initialize with 0s to be 1 centered as the RMSNorm here does (1 + weight)
         if "RMSNorm" in module.__class__.__name__:
-            init.zeros_(module.weight)
+            module.weight.data.zero_()
 
 
 class GemmaModel(LlamaModel):

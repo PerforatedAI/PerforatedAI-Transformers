@@ -30,7 +30,14 @@ cd optimum-executorch
 pip install '.[dev]'
 ```
 
-Export a Transformers model to ExecuTorch with the CLI tool.
+> [!TIP]
+> Refer to the [Export a model to ONNX with optimum.exporters.onnx](https://huggingface.co/docs/optimum/exporters/onnx/usage_guides/export_a_model#exporting-a-model-to-onnx-using-the-cli) guide for all available arguments or with the command below.
+>
+> ```bash
+> optimum-cli export onnx --help
+> ```
+
+Set the `--model` argument to export a PyTorch model from the Hub.
 
 ```bash
 optimum-cli export executorch \
@@ -46,8 +53,16 @@ optimum-cli export executorch \
 
 Run the following command to view all export options.
 
-```bash
-optimum-cli export executorch --help
+```text
+Validating ONNX model distilbert_base_uncased_squad_onnx/model.onnx...
+	-[✓] ONNX model output names match reference model (start_logits, end_logits)
+	- Validating ONNX Model output "start_logits":
+		-[✓] (2, 16) matches (2, 16)
+		-[✓] all values close (atol: 0.0001)
+	- Validating ONNX Model output "end_logits":
+		-[✓] (2, 16) matches (2, 16)
+		-[✓] all values close (atol: 0.0001)
+The ONNX export succeeded and the exported model was saved at: distilbert_base_uncased_squad_onnx
 ```
 
 ## ONNX

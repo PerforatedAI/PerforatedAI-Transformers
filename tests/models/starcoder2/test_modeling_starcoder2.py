@@ -17,7 +17,7 @@ import unittest
 
 import pytest
 
-from transformers import BitsAndBytesConfig, is_torch_available
+from transformers import is_torch_available
 from transformers.testing_utils import (
     Expectations,
     require_bitsandbytes,

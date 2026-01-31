@@ -71,8 +71,8 @@ class EomtImageProcessorKwargs(ImagesKwargs, total=False):
 # Adapted from transformers.models.maskformer.image_processing_maskformer.convert_segmentation_map_to_binary_masks
 def convert_segmentation_map_to_binary_masks(
     segmentation_map: np.ndarray,
-    instance_id_to_semantic_id: dict[int, int] | None = None,
-    ignore_index: int | None = None,
+    instance_id_to_semantic_id: Optional[dict[int, int]] = None,
+    ignore_index: Optional[int] = None,
 ):
     if ignore_index is not None:
         segmentation_map = np.where(segmentation_map == 0, ignore_index, segmentation_map - 1)

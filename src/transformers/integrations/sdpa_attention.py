@@ -32,9 +32,14 @@ def use_gqa_in_sdpa(attention_mask: torch.Tensor | None, key: torch.Tensor) -> b
     #   - attention_mask is None (otherwise it will fall back to the math kernel)
     # 2.xpu
     #   - torch version >= 2.8
+    #   - key is not a torch.fx.Proxy (otherwise it will fail with a tracing error)
+    # 3.npu
+    #   - npu is not supported gqa currently
     if _is_torch_xpu_available:
-        return _is_torch_greater_or_equal_than_2_8
-    return _is_torch_greater_or_equal_than_2_5 and attention_mask is None
+        return _is_torch_greater_or_equal_than_2_8 and not isinstance(key, torch.fx.Proxy)
+    if _is_torch_npu_available:
+        return False
+    return _is_torch_greater_or_equal_than_2_5 and attention_mask is None and not isinstance(key, torch.fx.Proxy)
 
 
 def sdpa_attention_forward(

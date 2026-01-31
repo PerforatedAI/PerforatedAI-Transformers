@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ..utils import is_accelerate_available, is_torch_available, is_torch_xpu_available, logging
 from .base import HfQuantizer
@@ -74,11 +74,78 @@ class FineGrainedFP8HfQuantizer(HfQuantizer):
                     "Please use a quantized checkpoint or remove the cpu/disk device from the device_map."
                 )
 
+    def update_dtype(self, dtype: "torch.dtype") -> "torch.dtype":
+        if dtype is None:
+            logger.info("Setting dtype to torch.float32 as no dtype was specified in from_pretrained")
+            dtype = torch.float32
+        return dtype
+
+    def create_quantized_param(
+        self,
+        model: "PreTrainedModel",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        **kwargs,
+    ):
+        from ..integrations.finegrained_fp8 import FP8Linear
+        from ..modeling_utils import _load_parameter_into_model
+
+        # Sanity checks
+        module, tensor_name = get_module_from_name(model, param_name)
+        if isinstance(module, FP8Linear):
+            if self.pre_quantized or tensor_name == "bias":
+                if tensor_name == "weight" and param_value.dtype != torch.float8_e4m3fn:
+                    raise ValueError("Expect quantized weights but got an unquantized weight")
+            else:
+                if tensor_name == "weight_scale_inv":
+                    raise ValueError("Expect unquantized weights but got a quantized weight_scale")
+
+        param_value = param_value.to(target_device)
+
+        # Get FP8 min/max values
+        fp8_min = torch.finfo(torch.float8_e4m3fn).min
+        fp8_max = torch.finfo(torch.float8_e4m3fn).max
+
+        block_size_m, block_size_n = self.quantization_config.weight_block_size
+
+        rows, cols = param_value.shape[-2:]
+
+        if rows % block_size_m != 0 or cols % block_size_n != 0:
+            raise ValueError(
+                f"Matrix dimensions ({rows}, {cols}) must be divisible by block sizes ({block_size_m}, {block_size_n})"
+            )
+        param_value_orig_shape = param_value.shape
+
+        param_value = param_value.reshape(
+            -1, rows // block_size_m, block_size_m, cols // block_size_n, block_size_n
+        ).permute(0, 1, 3, 2, 4)
+
+        # Calculate scaling factor for each block
+        max_abs = torch.amax(torch.abs(param_value), dim=(-1, -2))
+        scale = fp8_max / max_abs
+        scale_orig_shape = scale.shape
+        scale = scale.unsqueeze(-1).unsqueeze(-1)
+
+        # Quantize the weights
+        quantized_param = torch.clamp(param_value * scale, min=fp8_min, max=fp8_max).to(torch.float8_e4m3fn)
+
+        quantized_param = quantized_param.permute(0, 1, 3, 2, 4)
+        # Reshape back to matrix shape
+        quantized_param = quantized_param.reshape(param_value_orig_shape)
+
+        # Reshape scale to match the number of blocks
+        scale = scale.reshape(scale_orig_shape).squeeze().reciprocal()
+
+        # Load into the model
+        _load_parameter_into_model(model, param_name, quantized_param)
+        _load_parameter_into_model(model, param_name.rsplit(".", 1)[0] + ".weight_scale_inv", scale)
+
     def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
-        from ..integrations.finegrained_fp8 import FP8Expert, FP8Linear
+        from ..integrations.finegrained_fp8 import FP8Linear
 
         module, tensor_name = get_module_from_name(model, param_name)
-        if isinstance(module, (FP8Linear, FP8Expert)):
+        if isinstance(module, FP8Linear):
             if self.pre_quantized or tensor_name == "bias":
                 return False
             else:

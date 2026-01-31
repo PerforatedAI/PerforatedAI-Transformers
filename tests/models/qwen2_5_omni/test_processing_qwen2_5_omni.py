@@ -54,11 +54,12 @@ class Qwen2_5OmniProcessorTest(ProcessorTesterMixin, unittest.TestCase):
         )
 
     @classmethod
-    def _setup_video_processor(cls):
-        video_processor_class = cls._get_component_class_from_processor("video_processor")
-        return video_processor_class.from_pretrained(
-            cls.model_id, size={"shortest_edge": 28 * 28, "longest_edge": 56 * 56}
-        )
+    def setUpClass(cls):
+        cls.tmpdirname = tempfile.mkdtemp()
+        processor = Qwen2_5OmniProcessor.from_pretrained("Qwen/Qwen2.5-Omni-7B")
+        processor.image_processor.size = {"shortest_edge": 28 * 28, "longest_edge": 56 * 56}
+        processor.video_processor.size = {"shortest_edge": 28 * 28, "longest_edge": 56 * 56}
+        processor.save_pretrained(cls.tmpdirname)
 
     def prepare_audio_inputs(self, batch_size: int = 3):
         """This function prepares a list of numpy audios."""

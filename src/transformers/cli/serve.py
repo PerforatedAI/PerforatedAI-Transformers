@@ -28,7 +28,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from io import BytesIO
 from threading import Thread
-from typing import TYPE_CHECKING, Annotated, Optional, TypedDict, Union
+from typing import Optional, TypedDict, Union
 
 import typer
 from huggingface_hub import scan_cache_dir
@@ -585,7 +585,7 @@ class Serve:
         self,
         request: dict,
         schema: TypedDict,
-        validator: TypeAdapter,
+        validator: "TypeAdapter",
         unused_fields: set,
     ):
         """
@@ -657,14 +657,14 @@ class Serve:
     def build_chat_completion_chunk(
         self,
         request_id: str = "",
-        content: int | None = None,
-        model: str | None = None,
-        role: str | None = None,
-        finish_reason: str | None = None,
-        tool_calls: list[ChoiceDeltaToolCall] | None = None,
-        decode_stream: DecodeStream | None = None,
-        tokenizer: Optional["PreTrainedTokenizerFast"] = None,
-    ) -> ChatCompletionChunk:
+        content: Optional[int] = None,
+        model: Optional[str] = None,
+        role: Optional[str] = None,
+        finish_reason: Optional[str] = None,
+        tool_calls: Optional[list["ChoiceDeltaToolCall"]] = None,
+        decode_stream: Optional[DecodeStream] = None,
+        tokenizer: Optional[PreTrainedTokenizerFast] = None,
+    ) -> str:
         """
         Builds a chunk of a streaming OpenAI Chat Completion response.
 

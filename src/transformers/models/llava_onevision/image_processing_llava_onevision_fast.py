@@ -21,7 +21,7 @@
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature, get_patch_output_size, select_best_resolution
 from ...image_processing_utils_fast import (
@@ -41,7 +41,17 @@ from ...image_utils import (
 )
 from ...processing_utils import Unpack
 from ...utils import TensorType, auto_docstring
-from .image_processing_llava_onevision import LlavaOnevisionImageProcessorKwargs
+
+
+class LlavaOnevisionFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    """
+    image_grid_pinpoints (`list[list[int]]`, *optional*):
+        A list of possible resolutions to use for processing high resolution images. The best resolution is selected
+        based on the original size of the image. Can be overridden by `image_grid_pinpoints` in the `preprocess`
+        method.
+    """
+
+    image_grid_pinpoints: Optional[list[list[int]]]
 
 
 @auto_docstring

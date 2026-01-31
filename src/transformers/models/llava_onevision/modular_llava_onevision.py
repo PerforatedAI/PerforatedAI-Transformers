@@ -18,6 +18,7 @@ from typing import Optional
 import torch
 import torchvision.transforms.v2.functional as tvF
 from torch import nn
+from torchvision.transforms.v2 import functional as F
 
 from transformers.models.llava_next.image_processing_llava_next_fast import LlavaNextImageProcessorFast
 from transformers.models.llava_next_video.modeling_llava_next_video import (
@@ -47,9 +48,12 @@ from ...image_utils import (
 from ...modeling_flash_attention_utils import FlashAttentionKwargs
 from ...modeling_outputs import BaseModelOutputWithPooling
 from ...processing_utils import Unpack
-from ...utils import TensorType, auto_docstring, logging
-from ...utils.generic import check_model_inputs
-from .image_processing_llava_onevision import LlavaOnevisionImageProcessorKwargs
+from ...utils import (
+    TensorType,
+    auto_docstring,
+    can_return_tuple,
+    logging,
+)
 
 
 logger = logging.get_logger(__name__)

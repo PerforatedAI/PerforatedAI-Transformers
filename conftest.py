@@ -94,6 +94,8 @@ def pytest_configure(config):
 
     os.environ["DISABLE_SAFETENSORS_CONVERSION"] = "true"
 
+    os.environ['DISABLE_SAFETENSORS_CONVERSION'] = 'true'
+
 
 def pytest_collection_modifyitems(items):
     for item in items:

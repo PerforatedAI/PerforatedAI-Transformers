@@ -195,43 +195,39 @@ class Phi3Config(PreTrainedConfig):
         """
         super().validate_rope(ignore_keys=ignore_keys)
 
-        # Run Phi3 specific validation
-        if not isinstance(self.rope_parameters, dict):
-            raise ValueError(f"`rope_parameters` must be a dictionary but got {self.rope_parameters}")
-        rope_parameters_type = self.rope_parameters.get("rope_type", None)
-        rope_parameters_short_factor = self.rope_parameters.get("short_factor", None)
-        rope_parameters_long_factor = self.rope_parameters.get("long_factor", None)
-        rotary_ndims = int(
-            self.hidden_size // self.num_attention_heads * self.rope_parameters["partial_rotary_factor"]
-        )
-        if rope_parameters_type not in ["default", "longrope"]:
-            raise ValueError(f"`rope_parameters`'s type field must be one of ['longrope'], got {rope_parameters_type}")
-
-        if rope_parameters_short_factor is not None:
-            if not (
-                isinstance(rope_parameters_short_factor, list)
-                and all(isinstance(x, (int, float)) for x in rope_parameters_short_factor)
-            ):
-                raise ValueError(
-                    f"`rope_parameters`'s short_factor field must be a list of numbers, got {rope_parameters_short_factor}"
-                )
-            if not len(rope_parameters_short_factor) == rotary_ndims // 2:
-                raise ValueError(
-                    f"`rope_parameters`'s short_factor field must have length {rotary_ndims // 2}, got {len(rope_parameters_short_factor)}"
-                )
-
-        if rope_parameters_long_factor is not None:
-            if not (
-                isinstance(rope_parameters_long_factor, list)
-                and all(isinstance(x, (int, float)) for x in rope_parameters_long_factor)
-            ):
-                raise ValueError(
-                    f"`rope_parameters`'s long_factor field must be a list of numbers, got {rope_parameters_long_factor}"
-                )
-            if not len(rope_parameters_long_factor) == rotary_ndims // 2:
-                raise ValueError(
-                    f"`rope_parameters`'s long_factor field must have length {rotary_ndims // 2}, got {len(rope_parameters_long_factor)}"
-                )
+        if not isinstance(self.rope_scaling, dict) or len(self.rope_scaling) != 3:
+            raise ValueError(
+                "`rope_scaling` must be a dictionary with three fields, `type`, `short_factor` and `long_factor`, "
+                f"got {self.rope_scaling}"
+            )
+        rope_scaling_type = self.rope_scaling.get("type", None)
+        rope_scaling_short_factor = self.rope_scaling.get("short_factor", None)
+        rope_scaling_long_factor = self.rope_scaling.get("long_factor", None)
+        if rope_scaling_type is None or rope_scaling_type != "longrope":
+            raise ValueError(f"`rope_scaling`'s type field must be one of ['longrope'], got {rope_scaling_type}")
+        if not (
+            isinstance(rope_scaling_short_factor, list)
+            and all(isinstance(x, (int, float)) for x in rope_scaling_short_factor)
+        ):
+            raise ValueError(
+                f"`rope_scaling`'s short_factor field must be a list of numbers, got {rope_scaling_short_factor}"
+            )
+        rotary_ndims = int(self.hidden_size // self.num_attention_heads * self.partial_rotary_factor)
+        if not len(rope_scaling_short_factor) == rotary_ndims // 2:
+            raise ValueError(
+                f"`rope_scaling`'s short_factor field must have length {rotary_ndims // 2}, got {len(rope_scaling_short_factor)}"
+            )
+        if not (
+            isinstance(rope_scaling_long_factor, list)
+            and all(isinstance(x, (int, float)) for x in rope_scaling_long_factor)
+        ):
+            raise ValueError(
+                f"`rope_scaling`'s long_factor field must be a list of numbers, got {rope_scaling_long_factor}"
+            )
+        if not len(rope_scaling_long_factor) == rotary_ndims // 2:
+            raise ValueError(
+                f"`rope_scaling`'s long_factor field must have length {rotary_ndims // 2}, got {len(rope_scaling_long_factor)}"
+            )
 
 
 __all__ = ["Phi3Config"]

@@ -44,7 +44,7 @@ from ...utils import (
 )
 from ...utils.generic import check_model_inputs, maybe_autocast
 from ...video_utils import VideoInput
-from ..glm4.modeling_glm4 import Glm4MLP, Glm4RMSNorm, Glm4RotaryEmbedding, eager_attention_forward
+from ..glm4.modeling_glm4 import Glm4MLP, Glm4RMSNorm, eager_attention_forward
 from ..qwen2_5_vl.modeling_qwen2_5_vl import (
     Qwen2_5_VisionPatchEmbed,
     Qwen2_5_VisionRotaryEmbedding,
@@ -282,7 +282,7 @@ class Glm4vTextConfig(PreTrainedConfig):
         super().__init__(ignore_keys_at_rope_validation={"mrope_section"}, **kwargs)
 
 
-class Glm4vConfig(PreTrainedConfig):
+class Glm4vConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`Glm4vModel`]. It is used to instantiate a
     GLM-4.1V model according to the specified arguments, defining the model architecture. Instantiating a
@@ -360,6 +360,8 @@ class Glm4vConfig(PreTrainedConfig):
         self.image_start_token_id = image_start_token_id
         self.image_end_token_id = image_end_token_id
         self.tie_word_embeddings = tie_word_embeddings
+
+        super().__init__(**kwargs)
 
         super().__init__(**kwargs)
 

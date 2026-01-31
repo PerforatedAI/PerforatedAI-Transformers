@@ -110,13 +110,105 @@ KERNELS_MIN_VERSION = "0.9.0"
 @lru_cache
 def is_torch_available() -> bool:
     try:
-        is_available, torch_version = _is_package_available("torch", return_version=True)
-        parsed_version = version.parse(torch_version)
-        if is_available and parsed_version < version.parse("2.2.0"):
-            logger.warning_once(f"Disabling PyTorch because PyTorch >= 2.2 is required but found {torch_version}")
-        return is_available and version.parse(torch_version) >= version.parse("2.2.0")
-    except packaging.version.InvalidVersion:
-        return False
+        _faiss_version = importlib.metadata.version("faiss-cpu")
+        logger.debug(f"Successfully imported faiss version {_faiss_version}")
+    except importlib.metadata.PackageNotFoundError:
+        try:
+            _faiss_version = importlib.metadata.version("faiss-gpu")
+            logger.debug(f"Successfully imported faiss version {_faiss_version}")
+        except importlib.metadata.PackageNotFoundError:
+            _faiss_available = False
+_ftfy_available = _is_package_available("ftfy")
+_g2p_en_available = _is_package_available("g2p_en")
+_hadamard_available = _is_package_available("fast_hadamard_transform")
+_ipex_available, _ipex_version = _is_package_available("intel_extension_for_pytorch", return_version=True)
+_jinja_available = _is_package_available("jinja2")
+_kenlm_available = _is_package_available("kenlm")
+_keras_nlp_available = _is_package_available("keras_nlp")
+_levenshtein_available = _is_package_available("Levenshtein")
+_librosa_available = _is_package_available("librosa")
+_natten_available = _is_package_available("natten")
+_nltk_available = _is_package_available("nltk")
+_onnx_available = _is_package_available("onnx")
+_openai_available = _is_package_available("openai")
+_optimum_available = _is_package_available("optimum")
+_auto_gptq_available = _is_package_available("auto_gptq")
+_gptqmodel_available = _is_package_available("gptqmodel")
+_auto_round_available, _auto_round_version = _is_package_available("auto_round", return_version=True)
+# `importlib.metadata.version` doesn't work with `awq`
+_auto_awq_available = importlib.util.find_spec("awq") is not None
+_quark_available = _is_package_available("quark")
+_fp_quant_available, _fp_quant_version = _is_package_available("fp_quant", return_version=True)
+_qutlass_available, _qutlass_version = _is_package_available("qutlass", return_version=True)
+_is_optimum_quanto_available = False
+try:
+    importlib.metadata.version("optimum_quanto")
+    _is_optimum_quanto_available = True
+except importlib.metadata.PackageNotFoundError:
+    _is_optimum_quanto_available = False
+# For compressed_tensors, only check spec to allow compressed_tensors-nightly package
+_compressed_tensors_available = importlib.util.find_spec("compressed_tensors") is not None
+_pandas_available = _is_package_available("pandas")
+_peft_available = _is_package_available("peft")
+_phonemizer_available = _is_package_available("phonemizer")
+_uroman_available = _is_package_available("uroman")
+_psutil_available = _is_package_available("psutil")
+_py3nvml_available = _is_package_available("py3nvml")
+_pyctcdecode_available = _is_package_available("pyctcdecode")
+_pygments_available = _is_package_available("pygments")
+_pytesseract_available = _is_package_available("pytesseract")
+_pytest_available = _is_package_available("pytest")
+_pytorch_quantization_available = _is_package_available("pytorch_quantization")
+_rjieba_available = _is_package_available("rjieba")
+_sacremoses_available = _is_package_available("sacremoses")
+_safetensors_available = _is_package_available("safetensors")
+_scipy_available = _is_package_available("scipy")
+_sentencepiece_available = _is_package_available("sentencepiece")
+_is_seqio_available = _is_package_available("seqio")
+_is_gguf_available, _gguf_version = _is_package_available("gguf", return_version=True)
+_sklearn_available = importlib.util.find_spec("sklearn") is not None
+if _sklearn_available:
+    try:
+        importlib.metadata.version("scikit-learn")
+    except importlib.metadata.PackageNotFoundError:
+        _sklearn_available = False
+_smdistributed_available = importlib.util.find_spec("smdistributed") is not None
+_soundfile_available = _is_package_available("soundfile")
+_spacy_available = _is_package_available("spacy")
+_sudachipy_available, _sudachipy_version = _is_package_available("sudachipy", return_version=True)
+_tensorflow_probability_available = _is_package_available("tensorflow_probability")
+_tensorflow_text_available = _is_package_available("tensorflow_text")
+_tf2onnx_available = _is_package_available("tf2onnx")
+_timm_available = _is_package_available("timm")
+_tokenizers_available = _is_package_available("tokenizers")
+_torchaudio_available = _is_package_available("torchaudio")
+_torchao_available, _torchao_version = _is_package_available("torchao", return_version=True)
+_torchdistx_available = _is_package_available("torchdistx")
+_torchvision_available, _torchvision_version = _is_package_available("torchvision", return_version=True)
+_mlx_available = _is_package_available("mlx")
+_num2words_available = _is_package_available("num2words")
+_hqq_available, _hqq_version = _is_package_available("hqq", return_version=True)
+_tiktoken_available = _is_package_available("tiktoken")
+_blobfile_available = _is_package_available("blobfile")
+_liger_kernel_available = _is_package_available("liger_kernel")
+_spqr_available = _is_package_available("spqr_quant")
+_rich_available = _is_package_available("rich")
+_kernels_available = _is_package_available("kernels")
+_matplotlib_available = _is_package_available("matplotlib")
+_mistral_common_available = _is_package_available("mistral_common")
+_triton_available, _triton_version = _is_package_available("triton", return_version=True)
+
+_torch_version = "N/A"
+_torch_available = False
+if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VALUES:
+    _torch_available, _torch_version = _is_package_available("torch", return_version=True)
+    if _torch_available:
+        _torch_available = version.parse(_torch_version) >= version.parse("2.1.0")
+        if not _torch_available:
+            logger.warning(f"Disabling PyTorch because PyTorch >= 2.1 is required but found {_torch_version}")
+else:
+    logger.info("Disabling PyTorch because USE_TF is set")
+    _torch_available = False
 
 
 @lru_cache
@@ -167,7 +259,128 @@ def is_torch_accelerator_available() -> bool:
     return False
 
 
-@lru_cache
+def is_torch_deterministic() -> bool:
+    """
+    Check whether pytorch uses deterministic algorithms by looking if torch.set_deterministic_debug_mode() is set to 1 or 2"
+    """
+    if is_torch_available():
+        import torch
+
+        if torch.get_deterministic_debug_mode() == 0:
+            return False
+        else:
+            return True
+
+    return False
+
+
+def is_triton_available(min_version: str = TRITON_MIN_VERSION) -> bool:
+    return _triton_available and version.parse(_triton_version) >= version.parse(min_version)
+
+
+def is_hadamard_available() -> Union[tuple[bool, str], bool]:
+    return _hadamard_available
+
+
+def is_hqq_available(min_version: str = HQQ_MIN_VERSION) -> bool:
+    return _hqq_available and version.parse(_hqq_version) >= version.parse(min_version)
+
+
+def is_pygments_available() -> Union[tuple[bool, str], bool]:
+    return _pygments_available
+
+
+def get_torch_version() -> str:
+    return _torch_version
+
+
+def get_torch_major_and_minor_version() -> str:
+    if _torch_version == "N/A":
+        return "N/A"
+    parsed_version = version.parse(_torch_version)
+    return str(parsed_version.major) + "." + str(parsed_version.minor)
+
+
+def is_torch_sdpa_available():
+    # Mostly retained for backward compatibility in remote code, since sdpa works correctly on all torch versions >= 2.2
+    if not is_torch_available() or _torch_version == "N/A":
+        return False
+    return True
+
+
+def is_torch_flex_attn_available() -> bool:
+    if not is_torch_available() or _torch_version == "N/A":
+        return False
+
+    # TODO check if some bugs cause push backs on the exact version
+    # NOTE: We require torch>=2.5.0 as it is the first release
+    return version.parse(_torch_version) >= version.parse("2.5.0")
+
+
+def is_torchvision_available() -> bool:
+    return _torchvision_available
+
+
+def is_torchvision_v2_available() -> bool:
+    return is_torchvision_available()
+
+
+def is_galore_torch_available() -> Union[tuple[bool, str], bool]:
+    return _galore_torch_available
+
+
+def is_apollo_torch_available() -> Union[tuple[bool, str], bool]:
+    return _apollo_torch_available
+
+
+def is_torch_optimi_available() -> Union[tuple[bool, str], bool]:
+    return _torch_optimi_available
+
+
+def is_lomo_available() -> Union[tuple[bool, str], bool]:
+    return _lomo_available
+
+
+def is_grokadamw_available() -> Union[tuple[bool, str], bool]:
+    return _grokadamw_available
+
+
+def is_schedulefree_available(min_version: str = SCHEDULEFREE_MIN_VERSION) -> bool:
+    return _schedulefree_available and version.parse(_schedulefree_version) >= version.parse(min_version)
+
+
+def is_pyctcdecode_available() -> Union[tuple[bool, str], bool]:
+    return _pyctcdecode_available
+
+
+def is_librosa_available() -> Union[tuple[bool, str], bool]:
+    return _librosa_available
+
+
+def is_essentia_available() -> Union[tuple[bool, str], bool]:
+    return _essentia_available
+
+
+def is_pydantic_available() -> Union[tuple[bool, str], bool]:
+    return _pydantic_available
+
+
+def is_fastapi_available() -> Union[tuple[bool, str], bool]:
+    return _fastapi_available
+
+
+def is_uvicorn_available() -> Union[tuple[bool, str], bool]:
+    return _uvicorn_available
+
+
+def is_openai_available() -> Union[tuple[bool, str], bool]:
+    return _openai_available
+
+
+def is_pretty_midi_available() -> Union[tuple[bool, str], bool]:
+    return _pretty_midi_available
+
+
 def is_torch_cuda_available() -> bool:
     if is_torch_available():
         import torch
@@ -236,35 +449,6 @@ def is_torch_npu_available(check_device=False) -> bool:
         except RuntimeError:
             return False
     return hasattr(torch, "npu") and torch.npu.is_available()
-
-
-@lru_cache
-def is_torch_xpu_available(check_device: bool = False) -> bool:
-    """
-    Checks if XPU acceleration is available either via native PyTorch (>=2.6),
-    `intel_extension_for_pytorch` or via stock PyTorch (>=2.4) and potentially
-    if a XPU is in the environment.
-    """
-    if not is_torch_available():
-        return False
-
-    torch_version = version.parse(get_torch_version())
-    if torch_version.major == 2 and torch_version.minor < 6:
-        if is_ipex_available():
-            import intel_extension_for_pytorch  # noqa: F401
-        elif torch_version.major == 2 and torch_version.minor < 4:
-            return False
-
-    import torch
-
-    if check_device:
-        try:
-            # Will raise a RuntimeError if no XPU  is found
-            _ = torch.xpu.device_count()
-            return torch.xpu.is_available()
-        except RuntimeError:
-            return False
-    return hasattr(torch, "xpu") and torch.xpu.is_available()
 
 
 @lru_cache
@@ -435,26 +619,38 @@ def is_torch_hpu_available() -> bool:
 
 
 @lru_cache
-def is_torch_bf16_gpu_available() -> bool:
+def is_habana_gaudi1() -> bool:
+    if not is_torch_hpu_available():
+        return False
+
+    import habana_frameworks.torch.utils.experimental as htexp
+
+    # Check if the device is Gaudi1 (vs Gaudi2, Gaudi3)
+    return htexp._get_device_type() == htexp.synDeviceType.synDeviceGaudi
+
+
+def is_torchdynamo_available() -> Union[tuple[bool, str], bool]:
+    return is_torch_available()
+
+
+def is_torch_compile_available() -> Union[tuple[bool, str], bool]:
+    return is_torch_available()
+
+
+def is_torchdynamo_compiling() -> Union[tuple[bool, str], bool]:
     if not is_torch_available():
         return False
 
     import torch
 
-    if torch.cuda.is_available():
-        return torch.cuda.is_bf16_supported()
-    if is_torch_xpu_available():
-        return torch.xpu.is_bf16_supported()
-    if is_torch_hpu_available():
-        return True
-    if is_torch_npu_available():
-        return torch.npu.is_bf16_supported()
-    if is_torch_mps_available():
-        # Note: Emulated in software by Metal using fp32 for hardware without native support (like M1/M2)
-        return torch.backends.mps.is_macos_or_newer(14, 0)
-    if is_torch_musa_available():
-        return torch.musa.is_bf16_supported()
-    return False
+        return torch.compiler.is_compiling()
+    except Exception:
+        try:
+            import torch._dynamo as dynamo
+
+            return dynamo.is_compiling()
+        except Exception:
+            return False
 
 
 @lru_cache
@@ -462,8 +658,16 @@ def is_torch_fp16_available_on_device(device: str) -> bool:
     if not is_torch_available():
         return False
 
-    if is_torch_hpu_available():
-        if is_habana_gaudi1():
+    try:
+        import torch
+
+        return torch.compiler.is_exporting()
+    except Exception:
+        try:
+            import torch._dynamo as dynamo
+
+            return dynamo.is_exporting()
+        except Exception:
             return False
         else:
             return True
@@ -1022,16 +1226,12 @@ def is_quark_available() -> bool:
     return _is_package_available("quark")
 
 
-@lru_cache
 def is_fp_quant_available():
-    is_available, fp_quant_version = _is_package_available("fp_quant", return_version=True)
-    return is_available and version.parse(fp_quant_version) >= version.parse("0.3.2")
+    return _fp_quant_available and version.parse(_fp_quant_version) >= version.parse("0.2.0")
 
 
-@lru_cache
 def is_qutlass_available():
-    is_available, qutlass_version = _is_package_available("qutlass", return_version=True)
-    return is_available and version.parse(qutlass_version) >= version.parse("0.2.0")
+    return _qutlass_available and version.parse(_qutlass_version) >= version.parse("0.1.0")
 
 
 @lru_cache

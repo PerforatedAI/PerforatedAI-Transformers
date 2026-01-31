@@ -36,7 +36,9 @@ class FPQuantHfQuantizer(HfQuantizer):
     """
 
     requires_calibration = False
+    requires_parameters_quantization = True
     is_qat_trainable = True
+    required_packages = ["fp_quant"]
 
     def __init__(self, quantization_config: QuantizationConfigMixin, **kwargs):
         super().__init__(quantization_config, **kwargs)
@@ -65,17 +67,15 @@ class FPQuantHfQuantizer(HfQuantizer):
                 "You are attempting to load a FPQuant model without setting device_map."
                 " Please set device_map comprised of 'cuda' devices."
             )
-        elif isinstance(device_map, dict):
-            if (
-                not self.quantization_config.pseudoquantization
-                and len(device_map) > 1
-                and "cpu" in device_map.values()
-                or "disk" in device_map.values()
-            ):
-                raise ValueError(
-                    "You are attempting to load a FPQuant model with a device_map that contains a CPU or disk device."
-                    " This is not supported. Please remove the CPU or disk device from the device_map."
-                )
+        elif (
+            isinstance(device_map, dict)
+            and ("cpu" in device_map.values() or "disk" in device_map.values())
+            and not self.quantization_config.pseudoquantization
+        ):
+            raise ValueError(
+                "You are attempting to load a FPQuant model with a device_map that contains a CPU or disk device."
+                " This is not supported. Please remove the CPU or disk device from the device_map."
+            )
 
     def update_dtype(self, dtype: "torch.dtype") -> "torch.dtype":
         if dtype != torch.bfloat16:
@@ -85,15 +85,43 @@ class FPQuantHfQuantizer(HfQuantizer):
             dtype = torch.bfloat16
         return dtype
 
-    def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
-        from fp_quant import FPQuantLinear
+    def create_quantized_param(
+        self,
+        model: "PreTrainedModel",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        **kwargs,
+    ):
+        module, _ = get_module_from_name(model, param_name)
 
-        module, tensor_name = get_module_from_name(model, param_name)
-        if isinstance(module, FPQuantLinear) and tensor_name in ["weight", "qweight", "dqweight"]:
-            # Only quantize weights of FPQuantLinear modules that are not already quantized
-            return True
-        else:
-            return False
+        # The module holds either:
+        #  * `weight` when `store_master_weights=True`
+        #  * `qweight` and `scales` when `store_master_weights=False` and `pseudoquantization=False`
+        #  * `dqweight` when `store_master_weights=False` and `pseudoquantization=True`
+
+        if param_name.endswith(".qweight"):
+            # Loading a real quantized checkpoint without master weights
+            module.qweight = torch.nn.Parameter(
+                param_value.to(target_device),
+                requires_grad=False,
+            )
+            module.weight = None
+            module.dqweight = None
+            return
+
+        if param_name.endswith(".dqweight"):
+            # Loading a pseudo-quantized checkpoint without master weights
+            module.dqweight = torch.nn.Parameter(param_value.to(target_device))
+            module.weight = None
+            module.qweight = None
+            module.scales = None
+            return
+
+        # Loading master weights or an unquantized checkpoint
+        module.weight = torch.nn.Parameter(param_value.to(target_device))
+        # Let pre-forward handle the quantization and set None where necessary
+        module.pre_forward()
 
     def _process_model_before_weight_loading(
         self,
@@ -121,8 +149,8 @@ class FPQuantHfQuantizer(HfQuantizer):
     def is_serializable(self):
         return True
 
-    def get_quantize_ops(self):
-        from ..integrations.fp_quant import FpQuantQuantize
+    def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
+        from fp_quant import FPQuantLinear
 
         return FpQuantQuantize(self)
 

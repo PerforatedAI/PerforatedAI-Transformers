@@ -17,7 +17,7 @@ import unittest
 
 from parameterized import parameterized
 
-from transformers import InternVLProcessor
+from transformers import AutoProcessor, AutoTokenizer, InternVLProcessor
 from transformers.testing_utils import require_av, require_torch, require_vision
 from transformers.utils import is_torch_available
 

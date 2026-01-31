@@ -48,6 +48,7 @@ from ...utils import (
     cached_file,
     check_torch_load_is_safe,
     is_peft_available,
+    is_torch_flex_attn_available,
     logging,
 )
 from .configuration_wav2vec2 import Wav2Vec2Config
@@ -55,6 +56,9 @@ from .configuration_wav2vec2 import Wav2Vec2Config
 
 WAV2VEC2_ADAPTER_PT_FILE = "adapter.{}.bin"
 WAV2VEC2_ADAPTER_SAFE_FILE = "adapter.{}.safetensors"
+
+if is_torch_flex_attn_available():
+    from ...integrations.flex_attention import make_flex_block_causal_mask
 
 
 logger = logging.get_logger(__name__)
@@ -1147,6 +1151,18 @@ class Wav2Vec2PreTrainedModel(PreTrainedModel):
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+
+        if use_auth_token is not None:
+            warnings.warn(
+                "The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers. Please use `token` instead.",
+                FutureWarning,
+            )
+            if token is not None:
+                raise ValueError(
+                    "`token` and `use_auth_token` are both specified. Please set only the argument `token`."
+                )
+            token = use_auth_token
+
         model_path_or_id = self.config._name_or_path
         state_dict = None
 

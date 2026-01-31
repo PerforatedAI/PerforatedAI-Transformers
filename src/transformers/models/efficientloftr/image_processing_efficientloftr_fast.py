@@ -22,9 +22,16 @@ from ...image_utils import (
     is_valid_image,
 )
 from ...processing_utils import Unpack
-from ...utils import TensorType, auto_docstring
-from .image_processing_efficientloftr import EfficientLoFTRImageProcessorKwargs
-from .modeling_efficientloftr import EfficientLoFTRKeypointMatchingOutput
+from ...utils import (
+    TensorType,
+    auto_docstring,
+)
+
+
+if TYPE_CHECKING:
+    from .modeling_efficientloftr import KeypointMatchingOutput
+
+import torchvision.transforms.v2.functional as F
 
 
 def _is_valid_image(image):

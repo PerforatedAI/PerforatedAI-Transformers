@@ -59,7 +59,7 @@ class Qwen2VLVideoProcessingTester:
         max_pixels=100 * 100,
         merge_size=2,
     ):
-        size = size if size is not None else {"shortest_edge": 400, "longest_edge": 10000}
+        size = size if size is not None else {"shortest_edge": 20}
         self.parent = parent
         self.batch_size = batch_size
         self.num_frames = num_frames

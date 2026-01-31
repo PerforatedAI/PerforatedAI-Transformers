@@ -108,16 +108,43 @@ class Qwen2VLTextConfig(PreTrainedConfig):
             Attention pattern for each layer.
         attention_dropout (`float`, *optional*, defaults to 0.0):
             The dropout ratio for the attention probabilities.
-        rope_parameters (`RopeParameters`, *optional*):
-            Dictionary containing the configuration parameters for the RoPE embeddings. The dictionary should contain
-            a value for `rope_theta` and optionally parameters used for scaling in case you want to use RoPE
-            with longer `max_position_embeddings`.
-        bos_token_id (`int`, *optional*, defaults to 151643):
-            The id of the _beginning-of-stream_ token.
-        eos_token_id (`int`, *optional*, defaults to 151645):
-            The id of the _end-of-stream_ token.
-        pad_token_id (`int`, *optional*):
-            The id of the _padding_ token.
+        rope_scaling (`Dict`, *optional*):
+            Dictionary containing the scaling configuration for the RoPE embeddings. NOTE: if you apply new rope type
+            and you expect the model to work on longer `max_position_embeddings`, we recommend you to update this value
+            accordingly.
+            Expected contents:
+                `rope_type` (`str`):
+                    The sub-variant of RoPE to use. Can be one of ['default', 'linear', 'dynamic', 'yarn', 'longrope',
+                    'llama3'], with 'default' being the original RoPE implementation.
+                `factor` (`float`, *optional*):
+                    Used with all rope types except 'default'. The scaling factor to apply to the RoPE embeddings. In
+                    most scaling types, a `factor` of x will enable the model to handle sequences of length x *
+                    original maximum pre-trained length.
+                `original_max_position_embeddings` (`int`, *optional*):
+                    Used with 'dynamic', 'longrope' and 'llama3'. The original max position embeddings used during
+                    pretraining.
+                `attention_factor` (`float`, *optional*):
+                    Used with 'yarn' and 'longrope'. The scaling factor to be applied on the attention
+                    computation. If unspecified, it defaults to value recommended by the implementation, using the
+                    `factor` field to infer the suggested value.
+                `beta_fast` (`float`, *optional*):
+                    Only used with 'yarn'. Parameter to set the boundary for extrapolation (only) in the linear
+                    ramp function. If unspecified, it defaults to 32.
+                `beta_slow` (`float`, *optional*):
+                    Only used with 'yarn'. Parameter to set the boundary for interpolation (only) in the linear
+                    ramp function. If unspecified, it defaults to 1.
+                `short_factor` (`list[float]`, *optional*):
+                    Only used with 'longrope'. The scaling factor to be applied to short contexts (<
+                    `original_max_position_embeddings`). Must be a list of numbers with the same length as the hidden
+                    size divided by the number of attention heads divided by 2
+                `long_factor` (`list[float]`, *optional*):
+                    Only used with 'longrope'. The scaling factor to be applied to long contexts (<
+                    `original_max_position_embeddings`). Must be a list of numbers with the same length as the hidden
+                    size divided by the number of attention heads divided by 2
+                `low_freq_factor` (`float`, *optional*):
+                    Only used with 'llama3'. Scaling factor applied to low frequency components of the RoPE
+                `high_freq_factor` (`float`, *optional*):
+                    Only used with 'llama3'. Scaling factor applied to high frequency components of the RoPE
 
     ```python
     >>> from transformers import Qwen2VLTextModel, Qwen2VLConfig
@@ -154,26 +181,25 @@ class Qwen2VLTextConfig(PreTrainedConfig):
 
     def __init__(
         self,
-        vocab_size: int | None = 152064,
-        hidden_size: int | None = 8192,
-        intermediate_size: int | None = 29568,
-        num_hidden_layers: int | None = 80,
-        num_attention_heads: int | None = 64,
-        num_key_value_heads: int | None = 8,
-        hidden_act: str | None = "silu",
-        max_position_embeddings: int | None = 32768,
-        initializer_range: float | None = 0.02,
-        rms_norm_eps: int | None = 1e-05,
-        use_cache: bool | None = True,
-        use_sliding_window: bool | None = False,
-        sliding_window: int | None = 4096,
-        max_window_layers: int | None = 80,
-        layer_types: list[str] | None = None,
-        attention_dropout: float | None = 0.0,
-        rope_parameters: RopeParameters | dict[str, RopeParameters] | None = None,
-        bos_token_id: int | None = 151643,
-        eos_token_id: int | None = 151645,
-        pad_token_id: int | None = None,
+        vocab_size=152064,
+        hidden_size=8192,
+        intermediate_size=29568,
+        num_hidden_layers=80,
+        num_attention_heads=64,
+        num_key_value_heads=8,
+        hidden_act="silu",
+        max_position_embeddings=32768,
+        initializer_range=0.02,
+        rms_norm_eps=1e-05,
+        use_cache=True,
+        tie_word_embeddings=False,
+        rope_theta=1000000.0,
+        use_sliding_window=False,
+        sliding_window=4096,
+        max_window_layers=80,
+        layer_types=None,
+        attention_dropout=0.0,
+        rope_scaling=None,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -207,27 +233,17 @@ class Qwen2VLTextConfig(PreTrainedConfig):
             ]
         layer_type_validation(self.layer_types, self.num_hidden_layers)
 
-        self.rope_parameters = rope_parameters
-        self.bos_token_id = bos_token_id
-        self.eos_token_id = eos_token_id
-        self.pad_token_id = pad_token_id
-        super().__init__(
-            ignore_keys_at_rope_validation={"mrope_section"},
-            **kwargs,
-        )
-
-    def convert_rope_params_to_dict(self, ignore_keys_at_rope_validation: set | None = None, **kwargs):
-        rope_scaling = kwargs.pop("rope_scaling", None)
-        self.rope_parameters = rope_scaling or self.rope_parameters
-        self.rope_parameters = self.rope_parameters if self.rope_parameters is not None else {}
-
-        # Standardize and validate the correctness of rotary position embeddings parameters
-        self.rope_parameters.setdefault("rope_theta", kwargs.pop("rope_theta", self.default_theta))
-        if self.rope_parameters.get("rope_type", self.rope_parameters.get("type")) == "mrope":
-            self.rope_parameters["rope_type"] = "default"
-        self.standardize_rope_params()
-        self.validate_rope(ignore_keys=ignore_keys_at_rope_validation)
-        return kwargs
+        # Validate the correctness of rotary position embeddings parameters
+        # BC: if there is a 'type' field, move it to 'rope_type'.
+        # and change type from 'mrope' to 'default' because `mrope` does default RoPE calculations
+        # one can set it to "linear"/"dynamic" etc. to have scaled RoPE
+        # TODO: @raushan update config in the hub
+        if self.rope_scaling is not None and "type" in self.rope_scaling:
+            if self.rope_scaling["type"] == "mrope":
+                self.rope_scaling["type"] = "default"
+            self.rope_scaling["rope_type"] = self.rope_scaling["type"]
+        rope_config_validation(self, ignore_keys={"mrope_section"})
+        super().__init__(tie_word_embeddings=tie_word_embeddings, **kwargs)
 
 
 class Qwen2VLConfig(PreTrainedConfig):
@@ -254,8 +270,6 @@ class Qwen2VLConfig(PreTrainedConfig):
             The token index to denote start of vision input.
         vision_end_token_id (`int`, *optional*, defaults to 151653):
             The token index to denote end of vision input.
-        tie_word_embeddings (`bool`, *optional*, defaults to `False`):
-            Whether the model's input and output word embeddings should be tied.
 
     ```python
     >>> from transformers import Qwen2VLForConditionalGeneration, Qwen2VLConfig
@@ -282,9 +296,13 @@ class Qwen2VLConfig(PreTrainedConfig):
         video_token_id=151656,
         vision_start_token_id=151652,
         vision_end_token_id=151653,
-        tie_word_embeddings=False,
         **kwargs,
     ):
+        # We need to init super() here so that it does not reset values
+        # that are in text config to the BaseClass defaults. The Base
+        # config has many text related defaults and not all defaults are same as for `Qwen2VLTextConfig`
+        super().__init__(**kwargs)
+
         if isinstance(vision_config, dict):
             self.vision_config = self.sub_configs["vision_config"](**vision_config)
         elif vision_config is None:
@@ -304,8 +322,30 @@ class Qwen2VLConfig(PreTrainedConfig):
         self.video_token_id = video_token_id
         self.vision_start_token_id = vision_start_token_id
         self.vision_end_token_id = vision_end_token_id
-        self.tie_word_embeddings = tie_word_embeddings
-        super().__init__(**kwargs)
+
+        # Attention implementation to use. It sets it recursively on sub-configs so we call it again in the end
+        self._attn_implementation = kwargs.pop("attn_implementation", None)
+
+    def __setattr__(self, key, value):
+        if (
+            (text_config := super().__getattribute__("__dict__").get("text_config")) is not None
+            and key not in ["_name_or_path", "model_type", "dtype", "_attn_implementation_internal"]
+            and key in text_config.__dict__
+        ):
+            setattr(text_config, key, value)
+        else:
+            super().__setattr__(key, value)
+
+    def __getattribute__(self, key):
+        if "text_config" in super().__getattribute__("__dict__") and key not in [
+            "dtype",
+            "_attn_implementation_internal",
+        ]:
+            text_config = super().__getattribute__("text_config")
+            if key in text_config.__dict__:
+                return getattr(text_config, key)
+
+        return super().__getattribute__(key)
 
 
 __all__ = ["Qwen2VLConfig", "Qwen2VLTextConfig"]

@@ -11,7 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import TYPE_CHECKING
+import importlib
+from collections import defaultdict
+from functools import cached_property
+from typing import TYPE_CHECKING, Optional, Union
+
+from packaging import version
 
 from .base import HfQuantizer
 from .quantizers_utils import get_module_from_name
@@ -51,6 +56,18 @@ class Bnb4BitHfQuantizer(HfQuantizer):
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
 
+        if self.quantization_config.llm_int8_skip_modules is not None:
+            self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
+
+        # This describes the additional items that are saved on the state dict (on the params themselves)
+        self.bnb_keys = [
+            f"quant_state.bitsandbytes__{self.quantization_config.bnb_4bit_quant_type}",
+            "absmax",
+            "quant_map",
+        ]
+        if self.quantization_config.bnb_4bit_use_double_quant:
+            self.bnb_keys.extend(["nested_absmax", "nested_quant_map"])
+
     def validate_environment(self, *args, **kwargs):
         if not is_accelerate_available():
             raise ImportError(
@@ -86,13 +103,94 @@ class Bnb4BitHfQuantizer(HfQuantizer):
 
         return super().param_element_size(model, param_name, param)
 
+    def update_unexpected_keys(self, model, unexpected_keys: list[str]) -> list[str]:
+        return [k for k in unexpected_keys if not any(k.endswith(x) for x in self.bnb_keys)]
+
     def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
         import bitsandbytes as bnb
 
+        # They are on the params themselves, so we cannot easily extract the module from the name
+        if any(param_name.endswith(x) for x in self.bnb_keys):
+            return True
         module, name = get_module_from_name(model, param_name)
         return isinstance(module, bnb.nn.Linear4bit) and name != "bias"
 
-    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
+    def get_param_name(self, param_name: str) -> str:
+        """
+        Get the right param_name in order to get the module associated with the param.
+        This is useful for quantized stats lile absmax or quant_map as we need to update the param_name to get the module as they are stored in ...weight.absmax.
+        """
+        if self.pre_quantized:
+            # We need to get the param name of quantized weights and not its components. Otherwise, we won't be able to get the nn.Module associated.
+            if any(param_name.endswith(x) for x in self.bnb_keys):
+                param_name = (
+                    param_name.rsplit(".", 1)[0] if "quant_state." not in param_name else param_name.rsplit(".", 2)[0]
+                )
+        return param_name
+
+    def create_quantized_param(
+        self,
+        model: "PreTrainedModel",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        **kwargs,
+    ):
+        import bitsandbytes as bnb
+
+        full_name = param_name
+
+        # update param name to get the weights instead of the quantized stats
+        param_name = self.get_param_name(param_name)
+        module, tensor_name = get_module_from_name(model, param_name)
+
+        # `torch.Tensor.to(<int num>)` is not supported by `torch_npu` (see this [issue](https://github.com/Ascend/pytorch/issues/16)).
+        if isinstance(target_device, int) and is_torch_npu_available():
+            target_device = f"npu:{target_device}"
+
+        # construct `new_value` for the module._parameters[tensor_name]
+        if self.pre_quantized:
+            module_name = param_name.rsplit(".", 1)[0]
+            # Save the states for later quantization when they are all gathered
+            if not hasattr(self, "param_quant_stats"):
+                self.param_quant_stats = defaultdict(dict)
+            self.param_quant_stats[module_name].update({full_name: param_value})
+
+            # We are ready for quantization in this case (note, the +1 is for the weight itself)
+            if len(self.param_quant_stats[module_name]) == len(self.bnb_keys) + 1:
+                param_kwargs = {}
+                if self.is_bnb_supports_quant_storage_module:
+                    param_kwargs["module"] = module
+
+                weight = self.param_quant_stats[module_name].pop(f"{module_name}.weight")
+                new_value = bnb.nn.Params4bit.from_prequantized(
+                    data=weight,
+                    quantized_stats=self.param_quant_stats[module_name],
+                    requires_grad=False,
+                    device=target_device,
+                    **param_kwargs,
+                )
+                # Set it
+                module._parameters[tensor_name] = new_value
+                # Delete the states
+                del self.param_quant_stats[module_name]
+        else:
+            new_value = param_value.to("cpu")
+            old_value = getattr(module, tensor_name)
+
+            # Support models using `Conv1D` in place of `nn.Linear` (e.g. openai-community/gpt2) by transposing the weight matrix prior to quantization.
+            # Since weights are saved in the correct "orientation", we skip transposing when loading.
+            if issubclass(module.source_cls, Conv1D):
+                new_value = new_value.T
+
+            kwargs = old_value.__dict__
+            kwargs.pop("_is_hf_initialized", None)
+            new_value = bnb.nn.Params4bit(new_value, requires_grad=False, **kwargs).to(target_device)
+
+            module._parameters[tensor_name] = new_value
+
+    # Copied from transformers.quantizers.quantizer_bnb_8bit.Bnb8BitHfQuantizer.adjust_max_memory
+    def adjust_max_memory(self, max_memory: dict[str, Union[int, str]]) -> dict[str, Union[int, str]]:
         # need more space for buffers that are created during quantization
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory

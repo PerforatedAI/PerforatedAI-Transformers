@@ -19,7 +19,7 @@ import unittest
 
 import pytest
 
-from transformers import AutoTokenizer, BitsAndBytesConfig, GenerationConfig, is_torch_available
+from transformers import AutoTokenizer, GenerationConfig, is_torch_available
 from transformers.testing_utils import (
     backend_empty_cache,
     cleanup,

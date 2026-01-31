@@ -12,10 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
+
 ⚠️ Note that this file is in Markdown but contain specific syntax for our doc-builder (similar to MDX) that may not be rendered properly in your Markdown viewer.
 
 -->
 *This model was released on 2025-01-13 and added to Hugging Face Transformers on 2025-09-29.*
+
 
 <div style="float: right;">
     <div class="flex flex-wrap space-x-1">
@@ -49,11 +51,10 @@ EdgeTAM Video's key strength is its ability to track objects across video frames
 #### Basic Video Tracking
 
 ```python
->>> from transformers import EdgeTamVideoModel, Sam2VideoProcessor
-from accelerate import Accelerator
+>>> from transformers import EdgeTamVideoModel, Sam2VideoProcessor, infer_device
 >>> import torch
 
->>> device = Accelerator().device
+>>> device = infer_device()
 >>> model = EdgeTamVideoModel.from_pretrained("yonigozlan/edgetam-video-1").to(device, dtype=torch.bfloat16)
 >>> processor = Sam2VideoProcessor.from_pretrained("yonigozlan/edgetam-video-1")
 
@@ -294,4 +295,3 @@ Tracked 2 objects through 200 frames
 
 [[autodoc]] EdgeTamVideoModel
     - forward
-    - get_image_features

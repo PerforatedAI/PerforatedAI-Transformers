@@ -323,21 +323,6 @@ class Emu3Vision2TextModelTest(ModelTesterMixin, GenerationTesterMixin, Pipeline
     def test_generate_with_static_cache(self):
         pass
 
-    def _image_features_get_expected_num_attentions(self, model_tester=None):
-        if model_tester is None:
-            model_tester = self.model_tester
-        # The number of Emu3VQVAEAttentionBlock instances in the encoder, assumes that attn_resolutions is empty (default)
-        # 0 via down due to attn_resolutions being empty, 1 via middle block, 0 via up due to attn_resolutions being empty
-        return 1
-
-    def _image_features_get_expected_num_hidden_states(self, model_tester=None):
-        if model_tester is None:
-            model_tester = self.model_tester
-        # The number of Emu3VQVAEResnetBlock and Emu3VQVAETemporalResnetBlock instances in the encoder, plus 1 for before the block
-        # up_down_blocks for down, 2 for middle, vq_num_res_blocks for Emu3VQVAETemporalResnetBlock
-        up_down_blocks = len(model_tester.vq_channel_multiplier) * model_tester.vq_num_res_blocks
-        return up_down_blocks + 2 + model_tester.vq_num_res_blocks + 1
-
 
 @require_torch
 class Emu3IntegrationTest(unittest.TestCase):

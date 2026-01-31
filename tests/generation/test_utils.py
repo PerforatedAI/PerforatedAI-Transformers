@@ -23,6 +23,7 @@ import tempfile
 import unittest
 import warnings
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pytest
@@ -914,7 +915,7 @@ class GenerationTesterMixin:
 
     @pytest.mark.generate
     def test_left_padding_compatibility(
-        self, unpadded_custom_inputs: dict | None = None, padded_custom_inputs: dict | None = None
+        self, unpadded_custom_inputs: Optional[dict] = None, padded_custom_inputs: Optional[dict] = None
     ):
         """
         Tests that adding left-padding yields the same logits as the original input. Exposes arguments for custom
@@ -2327,18 +2328,36 @@ class GenerationTesterMixin:
                 use_cache=use_cache,
             )
 
-        # Check the cache shape
-        if use_cache:
-            cache_length = output.sequences.shape[1] - 1
-            self._check_past_key_values_for_generate(
-                batch_size=internal_batch_size,
-                past_key_values=cache,
-                seq_length=cache_length,
-                config=config,
-            )
-        # xlnet has a weird list cache, which is returned even with `use_cache=False`...
-        elif "xlnet" not in config.__class__.__name__.lower():
-            self.assertTrue(cache is None)
+        # Past Key Value States -- a few notes here:
+        # 1. Its inner sequence length is with respect to the inputs of the latest forward pass, hence the "-1"
+        # 2. We ignore models that have unique cache structures (e.g. mamba) or are in need of refatoring to match the
+        #    standard cache format (e.g.mamba architecture )
+        models_without_standard_cache = (
+            "bamba",
+            "granitemoehybrid",
+            "reformer",
+            "jamba",
+            "mamba",
+            "xlnet",
+            "zamba",
+            "zamba2",
+            "lfm2",
+            "lfm2-vl",
+        )
+        has_standard_cache = not any(
+            model_name in config.__class__.__name__.lower() for model_name in models_without_standard_cache
+        )
+        if has_standard_cache:
+            if use_cache:
+                cache_length = output.sequences.shape[1] - 1
+                self._check_past_key_values_for_generate(
+                    batch_size=internal_batch_size,
+                    decoder_past_key_values=decoder_past_key_values,
+                    cache_length=cache_length,
+                    config=config,
+                )
+            elif use_cache is False:
+                self.assertTrue(decoder_past_key_values is None)
 
     def _check_scores(self, batch_size, scores, generated_length, config):
         vocab_size = config.get_text_config(decoder=True).vocab_size

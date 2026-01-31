@@ -208,7 +208,7 @@ class Phi4MultimodalModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.
         self.model_tester = Phi4MultimodalModelTester(self)
         self.config_tester = ConfigTester(self, config_class=Phi4MultimodalConfig)
 
-    @pytest.mark.xfail(reason="This architecture seems to not compute gradients for some layer.")
+    @unittest.skip(reason="Depending on input modalities, some params may not have gradients")
     def test_training_gradient_checkpointing(self):
         super().test_training_gradient_checkpointing()
 

@@ -73,6 +73,10 @@ class Qwen3VLMoeTextConfig(PreTrainedConfig):
             Number of selected experts.
         num_experts (`int`, *optional*, defaults to 60):
             Number of routed experts.
+        norm_topk_prob (`bool`, *optional*, defaults to `True`):
+            Whether to normalize the topk probabilities.
+        router_aux_loss_coef (`float`, *optional*, defaults to 0.001):
+            The aux loss factor for the total loss.
         mlp_only_layers (`List[int]`, *optional*, defaults to `[]`):
             Indicate which layers use Qwen3VLMoeMLP rather than Qwen3VLMoeSparseMoeBlock
             The list contains layer index, from 0 to num_layers-1 if we have num_layers layers
@@ -121,27 +125,30 @@ class Qwen3VLMoeTextConfig(PreTrainedConfig):
 
     def __init__(
         self,
-        vocab_size: int | None = 151936,
-        hidden_size: int | None = 2048,
-        intermediate_size: int | None = 5632,
-        num_hidden_layers: int | None = 24,
-        num_attention_heads: int | None = 16,
-        num_key_value_heads: int | None = 16,
-        hidden_act: str | None = "silu",
-        max_position_embeddings: int | None = 128000,
-        initializer_range: float | None = 0.02,
-        rms_norm_eps: float | None = 1e-6,
-        use_cache: bool | None = True,
-        attention_bias: bool | None = False,
-        attention_dropout: float | None = 0.0,
-        decoder_sparse_step: int | None = 1,
-        moe_intermediate_size: int | None = 1408,
-        num_experts_per_tok: int | None = 4,
-        num_experts: int | None = 60,
-        mlp_only_layers: list[int] | None = None,
-        rope_parameters: RopeParameters | None = None,
-        head_dim: int | None = None,
-        pad_token_id: int | None = None,
+        vocab_size=151936,
+        hidden_size=2048,
+        intermediate_size=5632,
+        num_hidden_layers=24,
+        num_attention_heads=16,
+        num_key_value_heads=16,
+        hidden_act="silu",
+        max_position_embeddings=128000,
+        initializer_range=0.02,
+        rms_norm_eps=1e-6,
+        use_cache=True,
+        tie_word_embeddings=False,
+        rope_theta=5000000.0,
+        attention_bias=False,
+        attention_dropout=0.0,
+        decoder_sparse_step=1,
+        moe_intermediate_size=1408,
+        num_experts_per_tok=4,
+        num_experts=60,
+        norm_topk_prob=True,
+        router_aux_loss_coef=0.001,
+        mlp_only_layers=None,
+        rope_scaling=None,
+        head_dim=None,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -170,6 +177,8 @@ class Qwen3VLMoeTextConfig(PreTrainedConfig):
         self.moe_intermediate_size = moe_intermediate_size
         self.num_experts_per_tok = num_experts_per_tok
         self.num_experts = num_experts
+        self.norm_topk_prob = norm_topk_prob
+        self.router_aux_loss_coef = router_aux_loss_coef
         self.mlp_only_layers = [] if mlp_only_layers is None else mlp_only_layers
         self.pad_token_id = pad_token_id
 

@@ -18,7 +18,6 @@ import tempfile
 import unittest
 
 import numpy as np
-import pytest
 import requests
 from parameterized import parameterized
 
@@ -1498,10 +1497,6 @@ class Blip2TextRetrievalModelTest(ModelTesterMixin, unittest.TestCase):
 
     @unittest.skip(reason="Training is not yet supported")
     def test_training_gradient_checkpointing_use_reentrant_false(self):
-        pass
-
-    @unittest.skip(reason="Training is not yet supported")
-    def test_training_gradient_checkpointing_use_reentrant_true(self):
         pass
 
 

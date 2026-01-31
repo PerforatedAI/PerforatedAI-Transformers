@@ -327,6 +327,9 @@ class IdeficsModelTest(ModelTesterMixin, PipelineTesterMixin, GenerationTesterMi
         if is_torch_available()
         else {}
     )
+    test_pruning = False
+    test_headmasking = False
+    test_torchscript = False
 
     def _prepare_for_class(self, inputs_dict, model_class, return_labels=False):
         inputs_dict = super()._prepare_for_class(inputs_dict, model_class, return_labels=return_labels)

@@ -64,11 +64,11 @@ Note that each timestamp - i.e each codebook - gets its own set of Linear Layers
 
 It's the audio encoder from Kyutai, that has recently been integrated to transformers, which is used to "tokenize" audio. It has the same use that [`~EncodecModel`] has in [`~MusicgenModel`].
 
-## Tips
+## Tips:
 
 The original checkpoints can be converted using the conversion script `src/transformers/models/moshi/convert_moshi_transformers.py`
 
-### How to use the model
+### How to use the model:
 
 This implementation has two main aims:
 

@@ -24,8 +24,8 @@ Each derived config class implements model specific attributes. Common attribute
 `hidden_size`, `num_attention_heads`, and `num_hidden_layers`. Text models further implement:
 `vocab_size`.
 
-## PreTrainedConfig
+## PretrainedConfig
 
-[[autodoc]] PreTrainedConfig
+[[autodoc]] PretrainedConfig
     - push_to_hub
     - all

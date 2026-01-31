@@ -98,7 +98,7 @@ def build_attention_mask(
            █ █ █ █ █ █ █ █
 
     SLIDING WINDOW MASK:
-         ┌──────────────────────── seqlen_k - seqlen_q - sliding_window = 8 - 4 - 6 = -2 offset to the left
+         ┌──────────────────────── seqlen_k - seqlen_q - sliding_window = 8 - 4 - 6 = -2 offset to the right
        <─┴─>
      ░ █ | █ █ █ █ █ █ █ █
      ░ ░ | █ █ █ █ █ █ █ █
@@ -121,7 +121,7 @@ def build_attention_mask(
            █ █ █ █ █
 
     SLIDING WINDOW MASK:
-         ┌──────────────────────── seqlen_k - seqlen_q - sliding_window = 5 - 3 - 2 = 0 offset to the left
+         ┌──────────────────────── seqlen_k - seqlen_q - sliding_window = 5 - 3 - 2 = 0 offset to the right
         <┴>
          | ░ █ █ █ █
          | ░ ░ █ █ █

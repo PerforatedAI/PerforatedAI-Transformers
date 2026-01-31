@@ -196,7 +196,7 @@ class DPTConfig(PreTrainedConfig):
             if isinstance(backbone_config, dict):
                 logger.info("Initializing the config with a `BiT` backbone.")
                 backbone_config = BitConfig(**backbone_config)
-            elif not isinstance(backbone_config, PreTrainedConfig):
+            elif not isinstance(backbone_config, PretrainedConfig):
                 raise ValueError(
                     f"backbone_config must be a dictionary or a `PreTrainedConfig`, got {backbone_config.__class__}."
                 )

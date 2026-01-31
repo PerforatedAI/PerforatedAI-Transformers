@@ -34,6 +34,9 @@ Tips:
 Sample inference:
 
 ```python
+from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, infer_device
+
+```python
 from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 from accelerate import Accelerator
 

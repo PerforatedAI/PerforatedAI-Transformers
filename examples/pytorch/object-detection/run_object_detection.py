@@ -14,7 +14,7 @@
 
 # /// script
 # dependencies = [
-#     "transformers @ git+https://github.com/huggingface/transformers.git",
+#     "transformers==4.57.5",
 #     "albumentations >= 1.4.16",
 #     "timm",
 #     "datasets>=4.0",
@@ -51,6 +51,7 @@ from transformers import (
 from transformers.image_processing_utils import BatchFeature
 from transformers.image_transforms import center_to_corners_format
 from transformers.trainer import EvalPrediction
+from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
@@ -58,7 +59,7 @@ from transformers.utils.versions import require_version
 logger = logging.getLogger(__name__)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.57.0.dev0")
+check_min_version("4.57.0")
 
 require_version("datasets>=2.0.0", "To fix: pip install -r examples/pytorch/object-detection/requirements.txt")
 

@@ -25,9 +25,7 @@ import random
 import re
 import threading
 import time
-from collections.abc import Callable
-from functools import partial
-from typing import Any, NamedTuple
+from typing import Any, Callable, NamedTuple, Optional, Union
 
 import numpy as np
 
@@ -305,6 +303,19 @@ def default_hp_space_ray(trial) -> dict[str, Any]:
         "seed": tune.uniform(1, 40),
         "per_device_train_batch_size": tune.choice([4, 8, 16, 32, 64]),
     }
+
+
+def default_hp_space_sigopt(trial):
+    return [
+        {"bounds": {"min": 1e-6, "max": 1e-4}, "name": "learning_rate", "type": "double", "transformation": "log"},
+        {"bounds": {"min": 1, "max": 6}, "name": "num_train_epochs", "type": "int"},
+        {"bounds": {"min": 1, "max": 40}, "name": "seed", "type": "int"},
+        {
+            "categorical_values": ["4", "8", "16", "32", "64"],
+            "name": "per_device_train_batch_size",
+            "type": "categorical",
+        },
+    ]
 
 
 def default_hp_space_wandb(trial) -> dict[str, Any]:
@@ -763,7 +774,7 @@ def number_of_arguments(func):
 
 
 def find_executable_batch_size(
-    function: Callable | None = None, starting_batch_size: int = 128, auto_find_batch_size: bool = False
+    function: Optional[Callable] = None, starting_batch_size: int = 128, auto_find_batch_size: bool = False
 ):
     """
     Args:

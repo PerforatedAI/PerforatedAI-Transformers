@@ -477,7 +477,7 @@ class MistralCommonBackend(PreTrainedTokenizerBase):
 
     def decode(
         self,
-        token_ids: Union[int, list[int], list[list[int]], np.ndarray, "torch.Tensor"],
+        token_ids: Union[int, list[int], np.ndarray, "torch.Tensor"],
         skip_special_tokens: bool = False,
         clean_up_tokenization_spaces: bool | None = None,
         **kwargs,
@@ -1497,8 +1497,35 @@ class MistralCommonBackend(PreTrainedTokenizerBase):
                 local_files_only=local_files_only,
             )
         else:
-            candidate_files = os.listdir(pretrained_model_name_or_path)
-            tokenizer_path = os.path.join(pretrained_model_name_or_path, get_one_valid_tokenizer_file(candidate_files))
+            valid_tokenizer_files = []
+            tokenizer_file: str
+
+            instruct_versions = list(TokenizerVersion.__members__)
+            mm_versions = list(MultiModalVersion.__members__) + [""]  # allow no mm version
+            sentencepiece_suffixes = [f".model.{v}{m}" for v in instruct_versions for m in mm_versions] + [".model"]
+
+            for path in os.listdir(pretrained_model_name_or_path):
+                pathlib_repo_file = Path(path)
+                file_name = pathlib_repo_file.name
+                suffix = "".join(pathlib_repo_file.suffixes)
+                if file_name == "tekken.json" or suffix in sentencepiece_suffixes:
+                    valid_tokenizer_files.append(file_name)
+
+            if len(valid_tokenizer_files) == 0:
+                raise ValueError(f"No tokenizer file found in directory: {pretrained_model_name_or_path}")
+            # If there are multiple tokenizer files, we use tekken.json if it exists, otherwise the versioned one.
+            if len(valid_tokenizer_files) > 1:
+                if "tekken.json" in valid_tokenizer_files:
+                    tokenizer_file = "tekken.json"
+                else:
+                    tokenizer_file = max(valid_tokenizer_files)
+                logger.warning(
+                    f"Multiple tokenizer files found in directory: {pretrained_model_name_or_path}. Using {tokenizer_file}."
+                )
+            else:
+                tokenizer_file = valid_tokenizer_files[0]
+
+            tokenizer_path = os.path.join(pretrained_model_name_or_path, tokenizer_file)
 
         return cls(
             tokenizer_path=tokenizer_path,

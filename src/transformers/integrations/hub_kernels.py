@@ -284,11 +284,15 @@ def is_kernel(attn_implementation: str | None) -> bool:
     )
 
 
-def load_and_register_attn_kernel(
-    attn_implementation: str, attention_wrapper: Callable | None = None
-) -> ModuleType | None:
-    """
-    Load and register the kernel associated to `attn_implementation`.
+def load_and_register_kernel(attn_implementation: str) -> None:
+    """Load and register the kernel associated to `attn_implementation`."""
+    if not is_kernel(attn_implementation):
+        return
+    if not _kernels_available:
+        raise ImportError(
+            "`kernels` is either not installed or uses an incompatible version. "
+            "Please install the latest version with `pip install -U kernels`."
+        )
 
     Args:
         attn_implementation: A string, usually a kernel repo like "kernels-community/flash-mla".
@@ -331,7 +335,8 @@ def load_and_register_attn_kernel(
     if hasattr(kernel, "flash_attn_varlen_func"):
         if attention_wrapper is None:
             attention_wrapper = flash_attention_forward
-        kernel_function = attention_wrapper
+        kernel_function = partial(attention_wrapper, implementation=kernel)
+        lazy_import_flash_attention(kernel, force_import=True)
     elif kernel_name is not None:
         kernel_function = getattr(kernel, kernel_name)
 

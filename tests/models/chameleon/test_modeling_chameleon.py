@@ -75,11 +75,7 @@ class ChameleonModelTester:
         pad_token_id=0,
         vq_num_embeds=5,
         vq_embed_dim=5,
-        vq_resolution=512,
         vq_channel_multiplier=[1, 2],
-        vq_num_res_blocks=2,
-        vq_attn_resolutions=None,
-        vq_attn_type="vanilla",
         vq_img_token_start_id=10,  # has to be less than vocab size when added with vq_num_embeds
         scope=None,
     ):
@@ -230,19 +226,6 @@ class ChameleonModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTester
 
     @unittest.skip("Chameleon forces some token ids to be -inf!")
     def test_batching_equivalence(self):
-        pass
-
-    @unittest.skip("Skip get_image_features tests as those are tested via ChameleonVision2SeqModelTest instead")
-    @parameterized.expand([True, False, None])
-    def test_get_image_features_output(self, return_dict: bool | None):
-        pass
-
-    @unittest.skip("Skip get_image_features tests as those are tested via ChameleonVision2SeqModelTest instead")
-    def test_get_image_features_hidden_states(self):
-        pass
-
-    @unittest.skip("Skip get_image_features tests as those are tested via ChameleonVision2SeqModelTest instead")
-    def test_get_image_features_attentions(self):
         pass
 
 

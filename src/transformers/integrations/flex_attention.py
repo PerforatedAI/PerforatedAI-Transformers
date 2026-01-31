@@ -264,6 +264,8 @@ def flex_attention_forward(
             score = softcap * torch.tanh(score / softcap)
         if score_mask is not None:
             score = score + score_mask[batch_idx][0][q_idx][kv_idx]
+        if head_mask is not None:
+            score = score + head_mask[batch_idx][head_idx][0][0]
         # Note: attention sinks cannot be correctly implemented in score_mod
         # because it requires operating on the full attention matrix before softmax.
         # ==> this is done after flex attention

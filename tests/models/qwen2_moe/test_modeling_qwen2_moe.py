@@ -50,6 +50,18 @@ class Qwen2MoeModelTester(CausalLMModelTester):
 
 @require_torch
 class Qwen2MoeModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": Qwen2MoeModel,
+            "text-classification": Qwen2MoeForSequenceClassification,
+            "token-classification": Qwen2MoeForTokenClassification,
+            "text-generation": Qwen2MoeForCausalLM,
+            "question-answering": Qwen2MoeForQuestionAnswering,
+        }
+        if is_torch_available()
+        else {}
+    )
+
     test_all_params_have_gradient = False
     model_tester_class = Qwen2MoeModelTester
 

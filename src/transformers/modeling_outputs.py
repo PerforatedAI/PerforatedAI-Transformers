@@ -1650,18 +1650,18 @@ class Seq2SeqTSPredictionOutput(ModelOutput):
             Static features of each time series' in a batch which are copied to the covariates at inference time.
     """
 
-    loss: torch.FloatTensor | None = None
-    params: tuple[torch.FloatTensor, ...] | None = None
-    past_key_values: EncoderDecoderCache | None = None
-    decoder_hidden_states: tuple[torch.FloatTensor, ...] | None = None
-    decoder_attentions: tuple[torch.FloatTensor, ...] | None = None
-    cross_attentions: tuple[torch.FloatTensor, ...] | None = None
-    encoder_last_hidden_state: torch.FloatTensor | None = None
-    encoder_hidden_states: tuple[torch.FloatTensor, ...] | None = None
-    encoder_attentions: tuple[torch.FloatTensor, ...] | None = None
-    loc: torch.FloatTensor | None = None
-    scale: torch.FloatTensor | None = None
-    static_features: torch.FloatTensor | None = None
+    loss: Optional[torch.FloatTensor] = None
+    params: Optional[tuple[torch.FloatTensor, ...]] = None
+    past_key_values: Optional[EncoderDecoderCache] = None
+    decoder_hidden_states: Optional[tuple[torch.FloatTensor, ...]] = None
+    decoder_attentions: Optional[tuple[torch.FloatTensor, ...]] = None
+    cross_attentions: Optional[tuple[torch.FloatTensor, ...]] = None
+    encoder_last_hidden_state: Optional[torch.FloatTensor] = None
+    encoder_hidden_states: Optional[tuple[torch.FloatTensor, ...]] = None
+    encoder_attentions: Optional[tuple[torch.FloatTensor, ...]] = None
+    loc: Optional[torch.FloatTensor] = None
+    scale: Optional[torch.FloatTensor] = None
+    static_features: Optional[torch.FloatTensor] = None
 
 
 @dataclass

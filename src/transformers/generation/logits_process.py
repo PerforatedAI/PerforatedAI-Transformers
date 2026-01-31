@@ -2274,8 +2274,8 @@ class UnbatchedClassifierFreeGuidanceLogitsProcessor(LogitsProcessor):
         self,
         guidance_scale: float,
         model,
-        unconditional_ids: torch.LongTensor | None = None,
-        unconditional_attention_mask: torch.LongTensor | None = None,
+        unconditional_ids: Optional[torch.LongTensor] = None,
+        unconditional_attention_mask: Optional[torch.LongTensor] = None,
         use_cache: bool = True,
     ):
         self.guidance_scale = guidance_scale

@@ -1418,9 +1418,9 @@ class JanusImageProcessor(BlipImageProcessor):
     def pad_to_square(
         self,
         image: np.ndarray,
-        background_color: int | tuple[int, int, int] = 0,
-        data_format: str | ChannelDimension | None = None,
-        input_data_format: str | ChannelDimension | None = None,
+        background_color: Union[int, tuple[int, int, int]] = 0,
+        data_format: Optional[Union[str, ChannelDimension]] = None,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
     ) -> np.ndarray:
         """
         Pads an image to a square based on the longest edge.
@@ -1759,9 +1759,9 @@ class JanusImageProcessor(BlipImageProcessor):
     def unnormalize(
         self,
         image: np.ndarray,
-        image_mean: float | Iterable[float],
-        image_std: float | Iterable[float],
-        input_data_format: str | ChannelDimension | None = None,
+        image_mean: Union[float, Iterable[float]],
+        image_std: Union[float, Iterable[float]],
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
     ) -> np.ndarray:
         """
         Unnormalizes `image` using the mean and standard deviation specified by `mean` and `std`.

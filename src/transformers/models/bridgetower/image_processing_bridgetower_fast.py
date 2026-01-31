@@ -17,7 +17,7 @@ from collections.abc import Iterable
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils_fast import (
     BaseImageProcessorFast,
@@ -31,7 +31,6 @@ from ...image_processing_utils_fast import (
 )
 from ...image_utils import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD, PILImageResampling
 from ...utils import auto_docstring
-from .image_processing_bridgetower import BridgeTowerImageProcessorKwargs
 
 
 def make_pixel_mask(

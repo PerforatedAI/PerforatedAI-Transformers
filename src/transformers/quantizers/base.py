@@ -119,15 +119,83 @@ class HfQuantizer(ABC):
     def param_element_size(self, model: "PreTrainedModel", param_name: str, param: "torch.Tensor") -> float:
         return param.element_size()
 
-    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
+        Args:
+            dtype (`torch.dtype`, *optional*):
+                The dtype that is used to compute the device_map.
+        """
+        return dtype
+
+    def update_missing_keys(self, model, missing_keys: list[str], prefix: str) -> list[str]:
+        """
+        Override this method if you want to adjust the `missing_keys`.
+
+        Args:
+            missing_keys (`list[str]`, *optional*):
+                The list of missing keys in the checkpoint compared to the state dict of the model
+        """
+        return missing_keys
+
+    def update_expected_keys(self, model, expected_keys: list[str], loaded_keys: list[str]) -> list[str]:
+        """
+        Override this method if you want to adjust the `update_expected_keys`.
+
+        Args:
+            expected_keys (`list[str]`, *optional*):
+                The list of the expected keys in the initialized model.
+            loaded_keys (`list[str]`, *optional*):
+                The list of the loaded keys in the checkpoint.
+        """
+        return expected_keys
+
+    def update_unexpected_keys(self, model, unexpected_keys: list[str]) -> list[str]:
+        return unexpected_keys
+
+    def get_special_dtypes_update(self, model, dtype: "torch.dtype") -> dict[str, "torch.dtype"]:
+        """
+        returns dtypes for modules that are not quantized - used for the computation of the device_map in case
+        one passes a str as a device_map. The method will use the `modules_to_not_convert` that is modified
+        in `_process_model_before_weight_loading`.
+
+        Args:
+            model (`~transformers.PreTrainedModel`):
+                The model to quantize
+            dtype (`torch.dtype`):
+                The dtype passed in `from_pretrained` method.
+        """
+
+        return {
+            name: dtype for name, _ in model.named_parameters() if any(m in name for m in self.modules_to_not_convert)
+        }
+
+    def adjust_max_memory(self, max_memory: dict[str, Union[int, str]]) -> dict[str, Union[int, str]]:
         """adjust max_memory argument for infer_auto_device_map() if extra memory is needed for quantization"""
         return max_memory
 
+    def check_quantized_param(self, *args, **kwargs) -> bool:
+        """DEPRECATED -> remove in v5"""
+        logger.warning_once(
+            "`check_quantized_param` is deprecated in favor of `param_needs_quantization`, which is a much "
+            "more self.explanatory name for what the method achieves. It will be removed in v5"
+        )
+        return self.param_needs_quantization(*args, **kwargs)
+
     def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
         """
-        Check whether a given param needs to be quantized.
+        Check whether a given param needs quantization as defined by `create_quantized_param`.
         """
         return False
+
+    def create_quantized_param(self, *args, **kwargs):
+        """
+        Take needed components from state_dict (those from which `param_needs_quantization` is True) and create
+        quantized param.
+        It usually also load the new param directly in the `model`.
+        Note: only applicable if requires_parameters_quantization == True.
+        """
+        if not self.requires_parameters_quantization:
+            raise AttributeError(
+                f"`.create_quantized_param()` method is not supported by quantizer class {self.__class__.__name__}."
+            )
 
     def validate_environment(self, *args, **kwargs):
         """
@@ -261,6 +329,10 @@ class HfQuantizer(ABC):
     def get_state_dict_and_metadata(self, model):
         """Get state dict and metadata. Useful when we need to modify a bit the state dict due to quantization"""
         return None, {}
+
+    def update_state_dict_with_metadata(self, state_dict, metadata):
+        """Update state dict with metadata. Default behaviour returns state_dict"""
+        return state_dict
 
     @abstractmethod
     def is_serializable(self): ...

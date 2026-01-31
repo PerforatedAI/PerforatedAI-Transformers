@@ -1219,6 +1219,36 @@ class EncoderDecoderCache(Cache):
         """
         return len(self.self_attention_cache)
 
+    def to_legacy_cache(self) -> tuple[tuple[torch.Tensor]]:
+        """Converts the `EncoderDecoderCache` instance into its equivalent in the legacy cache format."""
+        legacy_cache = ()
+        if len(self.cross_attention_cache) > 0:
+            for self_attn, cross_attn in zip(
+                self.self_attention_cache.to_legacy_cache(), self.cross_attention_cache.to_legacy_cache()
+            ):
+                legacy_cache += (self_attn + cross_attn,)
+        else:
+            legacy_cache = self.self_attention_cache.to_legacy_cache()
+        return legacy_cache
+
+    @classmethod
+    def from_legacy_cache(
+        cls, past_key_values: Optional[Iterable[tuple[torch.FloatTensor, ...]]]
+    ) -> "EncoderDecoderCache":
+        """Converts a cache in the legacy cache format into an equivalent `EncoderDecoderCache`."""
+        cache = cls(DynamicCache(), DynamicCache())
+        if past_key_values is None:
+            logger.warning_once("past_key_values should not be None in from_legacy_cache()")
+        else:
+            for layer_idx, key_value_states in enumerate(past_key_values):
+                key_states, value_states = key_value_states[:2]
+                cache.self_attention_cache.update(key_states, value_states, layer_idx)
+                if len(key_value_states) > 2:
+                    key_states, value_states = key_value_states[2:]
+                    cache.cross_attention_cache.update(key_states, value_states, layer_idx)
+                    cache.is_updated[layer_idx] = True
+        return cache
+
     def get_seq_length(self, layer_idx: int = 0) -> int:
         """Returns the sequence length of the cached states. A layer index can be optionally passed."""
         return self.self_attention_cache.get_seq_length(layer_idx)

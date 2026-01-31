@@ -225,7 +225,29 @@ def check_attribute_being_used(config_class, attributes, default_value, source_s
             if (isinstance(model_exceptions, bool) and model_exceptions) or attribute in model_exceptions:
                 return True
 
-    return False
+    # Special cases to be allowed
+    case_allowed = True
+    if not attribute_used:
+        case_allowed = False
+        for attribute in attributes:
+            # Allow if the default value in the configuration class is different from the one in `PretrainedConfig`
+            if attribute == "is_encoder_decoder" and default_value is True:
+                case_allowed = True
+            elif attribute == "tie_word_embeddings" and default_value is False:
+                case_allowed = True
+
+            # Allow cases without checking the default value in the configuration class
+            elif attribute in attributes_to_allow + attributes_used_in_generation:
+                case_allowed = True
+            elif attribute.endswith("_token_id"):
+                case_allowed = True
+
+            # configuration class specific cases
+            if not case_allowed:
+                allowed_cases = SPECIAL_CASES_TO_ALLOW.get(config_class.__name__, [])
+                case_allowed = allowed_cases is True or attribute in allowed_cases
+
+    return attribute_used or case_allowed
 
 
 def check_config_attributes_being_used(config_class):

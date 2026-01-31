@@ -192,7 +192,7 @@ class MaskGenerationPipeline(ChunkPipeline):
         crop_overlap_ratio: float = 512 / 1500,
         points_per_crop: int = 32,
         crop_n_points_downscale_factor: int = 1,
-        timeout: float | None = None,
+        timeout: Optional[float] = None,
     ):
         image = load_image(image, timeout=timeout)
         target_size = self.image_processor.size.get("longest_edge", self.image_processor.size.get("height"))

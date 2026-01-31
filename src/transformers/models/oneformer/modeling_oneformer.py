@@ -322,7 +322,7 @@ class OneFormerHungarianMatcher(nn.Module):
                 align_corners=False,
             ).squeeze(1)
 
-            with maybe_autocast(device_type="cuda", enabled=False):
+            with torch.autocast(device_type="cuda", enabled=False):
                 pred_mask = pred_mask.float()
                 target_mask = target_mask.float()
 

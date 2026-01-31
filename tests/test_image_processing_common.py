@@ -30,7 +30,7 @@ import pytest
 from packaging import version
 
 from transformers import AutoImageProcessor, BatchFeature
-from transformers.image_utils import AnnotationFormat
+from transformers.image_utils import AnnotationFormat, AnnotionFormat
 from transformers.models.auto.image_processing_auto import IMAGE_PROCESSOR_MAPPING_NAMES
 from transformers.testing_utils import (
     check_json_file_has_correct_format,
@@ -694,37 +694,6 @@ class ImageProcessingTestMixin:
             f"Model '{model_type}' (processor: {image_processor_name}) was added after the cutoff date and must have "
             f"a fast image processor implementation. Please implement the corresponding fast processor.",
         )
-
-    def test_fast_image_processor_explicit_none_preserved(self):
-        """Test that explicitly setting an attribute to None is preserved through save/load."""
-        if self.fast_image_processing_class is None:
-            self.skipTest("Skipping test as fast image processor is not defined")
-
-        # Find an attribute with a non-None class default to test explicit None override
-        test_attr = None
-        for attr in ["do_resize", "do_rescale", "do_normalize"]:
-            if getattr(self.fast_image_processing_class, attr, None) is not None:
-                test_attr = attr
-                break
-
-        if test_attr is None:
-            self.skipTest("Could not find a suitable attribute to test")
-
-        # Create processor with explicit None (override the attribute)
-        kwargs = self.image_processor_dict.copy()
-        kwargs[test_attr] = None
-        image_processor = self.fast_image_processing_class(**kwargs)
-
-        # Verify it's in to_dict() as None (not filtered out)
-        self.assertIn(test_attr, image_processor.to_dict())
-        self.assertIsNone(image_processor.to_dict()[test_attr])
-
-        # Verify explicit None survives save/load cycle
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            image_processor.save_pretrained(tmpdirname)
-            reloaded = self.fast_image_processing_class.from_pretrained(tmpdirname)
-
-        self.assertIsNone(getattr(reloaded, test_attr), f"Explicit None for {test_attr} was lost after reload")
 
 
 class AnnotationFormatTestMixin:

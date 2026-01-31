@@ -11,6 +11,7 @@ import torch
 import torchvision.transforms.v2.functional as tvF
 from torch import nn
 from torchvision.io import read_image
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature, get_size_dict
 from ...image_processing_utils_fast import (
@@ -386,7 +387,7 @@ class ConditionalDetrImageProcessorFast(BaseImageProcessorFast):
             resample (`InterpolationMode`, defaults to `tvF.InterpolationMode.NEAREST_EXACT`):
                 The resampling filter to use when resizing the masks.
         """
-        interpolation = interpolation if interpolation is not None else tvF.InterpolationMode.NEAREST_EXACT
+        interpolation = interpolation if interpolation is not None else F.InterpolationMode.NEAREST_EXACT
         ratio_height, ratio_width = [target / orig for target, orig in zip(target_size, orig_size)]
 
         new_annotation = {}

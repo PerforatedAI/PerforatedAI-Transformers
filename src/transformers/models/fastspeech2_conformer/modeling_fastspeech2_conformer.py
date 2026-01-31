@@ -19,7 +19,6 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
-from ... import initialization as init
 from ...activations import ACT2FN
 from ...modeling_outputs import BaseModelOutput
 from ...modeling_utils import PreTrainedModel
@@ -489,17 +488,9 @@ class FastSpeech2ConformerConvolutionModule(nn.Module):
             kernel_size = module_config["kernel_size"]
             self.activation = ACT2FN[module_config.get("activation", "silu")]
         self.padding = (kernel_size - 1) // 2
-        self.pointwise_conv1 = nn.Conv1d(
-            channels, 2 * channels, kernel_size=1, stride=1, padding=0, bias=config.convolution_bias
-        )
+        self.pointwise_conv1 = nn.Conv1d(channels, 2 * channels, kernel_size=1, stride=1, padding=0, bias=True)
         self.depthwise_conv = nn.Conv1d(
-            channels,
-            channels,
-            kernel_size,
-            stride=1,
-            padding=self.padding,
-            groups=channels,
-            bias=config.convolution_bias,
+            channels, channels, kernel_size, stride=1, padding=self.padding, groups=channels, bias=True
         )
         self.norm = nn.BatchNorm1d(channels)
         self.pointwise_conv2 = nn.Conv1d(
@@ -512,7 +503,7 @@ class FastSpeech2ConformerConvolutionModule(nn.Module):
 
         Args:
             hidden_states (`torch.Tensor` of shape `(batch, time, channels)`): Input tensor.
-            attention_mask (`torch.Tensor` of shape `(batch, 1, time, time)`): Attention mask.
+            attention_mask (`torch.Tensor` of shape `(batch, 1, time)`): Attention mask.
 
         Returns:
             `torch.Tensor`: Output tensor of shape `(batch, time, channels)`.
@@ -528,10 +519,7 @@ class FastSpeech2ConformerConvolutionModule(nn.Module):
 
         # Apply padding mask before convolution
         if attention_mask is not None:
-            if attention_mask.dtype == torch.bool:
-                all_masked_rows = torch.all(~attention_mask, dim=2)
-            else:
-                all_masked_rows = torch.all(~(attention_mask == 0.0), dim=2)
+            all_masked_rows = torch.all(~attention_mask, dim=-1)
             hidden_states = hidden_states.masked_fill(all_masked_rows, 0.0)
 
         # 1D Depthwise Conv

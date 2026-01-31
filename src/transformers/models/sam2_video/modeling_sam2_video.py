@@ -39,8 +39,8 @@ from ...modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from ...modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
 from ...processing_utils import Unpack
 from ...pytorch_utils import compile_compatible_method_lru_cache
-from ...utils import ModelOutput, auto_docstring, can_return_tuple, logging
-from ...utils.generic import OutputRecorder, TransformersKwargs, is_flash_attention_requested
+from ...utils import ModelOutput, auto_docstring
+from ...utils.generic import OutputRecorder, TransformersKwargs
 from ..auto import AutoModel
 from .configuration_sam2_video import Sam2VideoConfig, Sam2VideoMaskDecoderConfig, Sam2VideoPromptEncoderConfig
 
@@ -295,7 +295,7 @@ class Sam2VideoInferenceSession:
         return value
 
     # Video frame management
-    def add_new_frame(self, pixel_values: torch.Tensor, frame_idx: int | None = None) -> int:
+    def add_new_frame(self, pixel_values: torch.Tensor, frame_idx: Optional[int] = None) -> int:
         """Add new frame with automatic device placement."""
         pixel_values = pixel_values.to(self.video_storage_device, dtype=self.dtype, non_blocking=True)
         if pixel_values.dim() == 4:
@@ -2152,46 +2152,6 @@ class Sam2VideoModel(Sam2VideoPreTrainedModel):
             image_embeddings=high_res_features + [backbone_features],
         )
 
-    def _select_closest_cond_frames(self, frame_idx, cond_frame_outputs, max_cond_frame_num):
-        """
-        Select up to `max_cond_frame_num` conditioning frames from `cond_frame_outputs`
-        that are temporally closest to the current frame at `frame_idx`. Here, we take
-        - a) the closest conditioning frame before `frame_idx` (if any);
-        - b) the closest conditioning frame after `frame_idx` (if any);
-        - c) any other temporally closest conditioning frames until reaching a total
-            of `max_cond_frame_num` conditioning frames.
-
-        Outputs:
-        - selected_outputs: selected items (keys & values) from `cond_frame_outputs`.
-        - unselected_outputs: items (keys & values) not selected in `cond_frame_outputs`.
-        """
-        if max_cond_frame_num == -1 or len(cond_frame_outputs) <= max_cond_frame_num:
-            selected_outputs = cond_frame_outputs
-            unselected_outputs = {}
-        else:
-            selected_outputs = {}
-            # the closest conditioning frame before `frame_idx` (if any)
-            idx_before = max((t for t in cond_frame_outputs if t < frame_idx), default=None)
-            if idx_before is not None:
-                selected_outputs[idx_before] = cond_frame_outputs[idx_before]
-
-            # the closest conditioning frame after `frame_idx` (if any)
-            idx_after = min((t for t in cond_frame_outputs if t >= frame_idx), default=None)
-            if idx_after is not None:
-                selected_outputs[idx_after] = cond_frame_outputs[idx_after]
-
-            # add other temporally closest conditioning frames until reaching a total
-            # of `max_cond_frame_num` conditioning frames.
-            num_remain = max_cond_frame_num - len(selected_outputs)
-            inds_remain = sorted(
-                (t for t in cond_frame_outputs if t not in selected_outputs),
-                key=lambda x: abs(x - frame_idx),
-            )[:num_remain]
-            selected_outputs.update((t, cond_frame_outputs[t]) for t in inds_remain)
-            unselected_outputs = {t: v for t, v in cond_frame_outputs.items() if t not in selected_outputs}
-
-        return selected_outputs, unselected_outputs
-
     def _gather_memory_frame_outputs(
         self,
         inference_session: Sam2VideoInferenceSession,
@@ -2207,15 +2167,12 @@ class Sam2VideoModel(Sam2VideoPreTrainedModel):
         """
         temporal_positions_and_previous_outputs = []
 
-        # Add conditioning frame outputs (limited by max_cond_frame_num)
+        # Add conditioning frame outputs (no limit here, as is the case in the original checkpoints)
         conditioning_outputs = inference_session.output_dict_per_obj[obj_idx]["cond_frame_outputs"]
         if not conditioning_outputs:
             raise ValueError(
                 "maskmem_features in conditioning outputs cannot be empty when not is_initial_conditioning_frame"
             )
-        conditioning_outputs, unselected_conditioning_outputs = self._select_closest_cond_frames(
-            frame_idx, conditioning_outputs, max_cond_frame_num=self.config.max_cond_frame_num
-        )
 
         # Store (temporal_position, output_data) tuples
         temporal_positions_and_previous_outputs = [(0, out) for out in conditioning_outputs.values()]
@@ -2232,7 +2189,7 @@ class Sam2VideoModel(Sam2VideoPreTrainedModel):
 
             # check if the output is already stored without using get_output to avoid unnecessary memory transfers between CPU and GPU
             output_data = inference_session.output_dict_per_obj[obj_idx]["non_cond_frame_outputs"].get(
-                previous_frame_idx, unselected_conditioning_outputs.get(previous_frame_idx, None)
+                previous_frame_idx, None
             )
 
             temporal_positions_and_previous_outputs.append((relative_temporal_offset, output_data))
@@ -2482,7 +2439,7 @@ class Sam2VideoModel(Sam2VideoPreTrainedModel):
                 num_object_pointer_tokens = object_pointers.shape[0]
 
         # Step 4: Concatenate all retrieved memories and their positional embeddings
-        combined_memory = torch.cat(memories_to_concatenate, dim=0).to(dtype=inference_session.dtype)
+        combined_memory = torch.cat(memories_to_concatenate, dim=0)
         combined_memory_positional_embeddings = torch.cat(memory_positional_embeddings_to_concatenate, dim=0)
 
         # Step 5: Forward through the memory attention mechanism

@@ -76,7 +76,6 @@ This model was contributed by [amyeroberts](https://huggingface.co/amyeroberts) 
 
 [[autodoc]] Idefics3ForConditionalGeneration
     - forward
-    - get_image_features
 
 ## Idefics3ImageProcessor
 

@@ -93,7 +93,7 @@ print(output_text)
 
 | HellaSwag | Winogrande | GSM8K| ARC-C | XLSum |
 | :------------- | :------------- | :------------- | :------------- | :------------- |
-| 75.0 | 74.0 | 24.1  | 50.9 | 29.5 |
+| 75.0 | 74.0 | 24.1  | 50.9 | 29.5
 
 *Code generation performance*. Evaluated using [HumanEval](https://github.com/openai/human-eval):
 

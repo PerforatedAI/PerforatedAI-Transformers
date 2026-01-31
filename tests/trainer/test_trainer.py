@@ -1291,6 +1291,13 @@ class TrainerIntegrationPrerunTest(TestCasePlus, TrainerIntegrationCommon):
             trainer.train()
             self.check_trained_model(trainer.model, atol=ATOL, rtol=RTOL)
 
+        # --bf16 --half_precision_backend apex can't be used together
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(ValueError):
+                trainer = get_regression_trainer(
+                    learning_rate=0.1, bf16=True, half_precision_backend="apex", output_dir=tmp_dir
+                )
+
     @require_torch_gpu
     @require_torch_tf32
     def test_tf32(self):
@@ -2870,6 +2877,56 @@ class TrainerIntegrationTest(TestCasePlus, TrainerIntegrationCommon):
             expected_acc = AlmostAccuracy()((pred + 1, y))["accuracy"]
             self.assertAlmostEqual(results["eval_accuracy"], expected_acc)
 
+    def test_evaluate_with_jit(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(
+                a=1.5, b=2.5, compute_metrics=AlmostAccuracy(), jit_mode_eval=True, output_dir=tmp_dir
+            )
+            # Make sure the trainer doesn't pass num_items_in_batch to the model's forward method,
+            # since it's not in the model forward's signature when using JIT
+            trainer.model_accepts_loss_kwargs = False
+            results = trainer.evaluate()
+
+            x, y = trainer.eval_dataset.x, trainer.eval_dataset.ys[0]
+            pred = 1.5 * x + 2.5
+            expected_loss = ((pred - y) ** 2).mean()
+            self.assertAlmostEqual(results["eval_loss"], expected_loss)
+            expected_acc = AlmostAccuracy()((pred, y))["accuracy"]
+            self.assertAlmostEqual(results["eval_accuracy"], expected_acc)
+
+            # With a number of elements not a round multiple of the batch size
+            trainer = get_regression_trainer(
+                a=1.5, b=2.5, eval_len=66, compute_metrics=AlmostAccuracy(), jit_mode_eval=True, output_dir=tmp_dir
+            )
+            trainer.model_accepts_loss_kwargs = False
+            results = trainer.evaluate()
+
+            x, y = trainer.eval_dataset.x, trainer.eval_dataset.ys[0]
+            pred = 1.5 * x + 2.5
+            expected_loss = ((pred - y) ** 2).mean()
+            self.assertAlmostEqual(results["eval_loss"], expected_loss)
+            expected_acc = AlmostAccuracy()((pred, y))["accuracy"]
+            self.assertAlmostEqual(results["eval_accuracy"], expected_acc)
+
+            # With logits preprocess
+            trainer = get_regression_trainer(
+                a=1.5,
+                b=2.5,
+                compute_metrics=AlmostAccuracy(),
+                preprocess_logits_for_metrics=lambda logits, labels: logits + 1,
+                jit_mode_eval=True,
+                output_dir=tmp_dir,
+            )
+            trainer.model_accepts_loss_kwargs = False
+            results = trainer.evaluate()
+
+            x, y = trainer.eval_dataset.x, trainer.eval_dataset.ys[0]
+            pred = 1.5 * x + 2.5
+            expected_loss = ((pred - y) ** 2).mean()
+            self.assertAlmostEqual(results["eval_loss"], expected_loss)
+            expected_acc = AlmostAccuracy()((pred + 1, y))["accuracy"]
+            self.assertAlmostEqual(results["eval_accuracy"], expected_acc)
+
     def test_predict(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             trainer = get_regression_trainer(a=1.5, b=2.5, output_dir=tmp_dir)
@@ -3003,6 +3060,52 @@ class TrainerIntegrationTest(TestCasePlus, TrainerIntegrationCommon):
             self.assertTrue(np.array_equal(labels[0], trainer.eval_dataset.ys[0]))
             self.assertTrue(np.array_equal(labels[1], trainer.eval_dataset.ys[1]))
 
+    def test_predict_with_jit(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trainer = get_regression_trainer(a=1.5, b=2.5, jit_mode_eval=True, output_dir=tmp_dir)
+            # Make sure the trainer doesn't pass num_items_in_batch to the model's forward method,
+            # since it's not in the model forward's signature when using JIT
+            trainer.model_accepts_loss_kwargs = False
+            preds = trainer.predict(trainer.eval_dataset).predictions
+            x = trainer.eval_dataset.x
+            self.assertTrue(np.allclose(preds, 1.5 * x + 2.5))
+
+            # With a number of elements not a round multiple of the batch size
+            trainer = get_regression_trainer(a=1.5, b=2.5, eval_len=66, jit_mode_eval=True, output_dir=tmp_dir)
+            trainer.model_accepts_loss_kwargs = False
+            preds = trainer.predict(trainer.eval_dataset).predictions
+            x = trainer.eval_dataset.x
+            self.assertTrue(np.allclose(preds, 1.5 * x + 2.5))
+
+            # With more than one output of the model
+            trainer = get_regression_trainer(a=1.5, b=2.5, double_output=True, jit_mode_eval=True, output_dir=tmp_dir)
+            trainer.model_accepts_loss_kwargs = False
+            preds = trainer.predict(trainer.eval_dataset).predictions
+            x = trainer.eval_dataset.x
+            self.assertEqual(len(preds), 2)
+            self.assertTrue(np.allclose(preds[0], 1.5 * x + 2.5))
+            self.assertTrue(np.allclose(preds[1], 1.5 * x + 2.5))
+
+            # With more than one output/label of the model
+            trainer = get_regression_trainer(
+                a=1.5,
+                b=2.5,
+                double_output=True,
+                label_names=["labels", "labels_2"],
+                jit_mode_eval=True,
+                output_dir=tmp_dir,
+            )
+            trainer.model_accepts_loss_kwargs = False
+            outputs = trainer.predict(trainer.eval_dataset)
+            preds = outputs.predictions
+            labels = outputs.label_ids
+            x = trainer.eval_dataset.x
+            self.assertEqual(len(preds), 2)
+            self.assertTrue(np.allclose(preds[0], 1.5 * x + 2.5))
+            self.assertTrue(np.allclose(preds[1], 1.5 * x + 2.5))
+            self.assertTrue(np.array_equal(labels[0], trainer.eval_dataset.ys[0]))
+            self.assertTrue(np.array_equal(labels[1], trainer.eval_dataset.ys[1]))
+
     def test_dynamic_shapes(self):
         eval_dataset = DynamicShapesDataset(batch_size=self.batch_size)
         model = RegressionModel(a=2, b=1)
@@ -3083,6 +3186,25 @@ class TrainerIntegrationTest(TestCasePlus, TrainerIntegrationCommon):
         trainer = get_regression_trainer(output_dir=tmp_dir, save_steps=5, pretrained=False)
         trainer.train()
         self.check_saved_checkpoints(tmp_dir, 5, int(self.n_epochs * 64 / self.batch_size), False)
+
+    def test_safe_checkpoints(self):
+        for save_safetensors in [True, False]:
+            tmp_dir = self.get_auto_remove_tmp_dir()
+            trainer = get_regression_trainer(output_dir=tmp_dir, save_steps=5, save_safetensors=save_safetensors)
+            trainer.train()
+            self.check_saved_checkpoints(
+                tmp_dir, 5, int(self.n_epochs * 64 / self.batch_size), safe_weights=save_safetensors
+            )
+
+            # With a regular model that is not a PreTrainedModel
+            tmp_dir = self.get_auto_remove_tmp_dir()
+            trainer = get_regression_trainer(
+                output_dir=tmp_dir, save_steps=5, pretrained=False, save_safetensors=save_safetensors
+            )
+            trainer.train()
+            self.check_saved_checkpoints(
+                tmp_dir, 5, int(self.n_epochs * 64 / self.batch_size), False, safe_weights=save_safetensors
+            )
 
     def test_save_collator_tokenizer_by_default(self):
         class FakeCollator:
@@ -5058,143 +5180,6 @@ class TrainerIntegrationTest(TestCasePlus, TrainerIntegrationCommon):
         # Trainer saves non-PreTrainedModel models as `model.safetensors` by default if safetensors is available.
         final_model_path = os.path.join(final_checkpoint_path, SAFE_WEIGHTS_NAME)
         self.assertTrue(os.path.exists(final_model_path), "Final model checkpoint was not saved!")
-
-    @require_torch_non_multi_accelerator
-    def test_resume_batch_order(self):
-        """
-        Test that verifies dataloader order is reproducible when resuming from partial checkpoints.
-        Tests resuming from checkpoint 7 (within epoch 1).
-        """
-
-        # --- Helper classes and functions defined locally for this test ---
-        class DummyDataset(torch.utils.data.Dataset):
-            def __init__(self, size: int = 32):
-                self.size = size
-                self.data = torch.randn((size, 10))
-                self.data[:, 0] = torch.arange(0, size)  # Encode the data order
-                self.labels = torch.randint(0, 10, (size,))
-
-            def __len__(self) -> int:
-                return self.size
-
-            def __getitem__(self, idx: int):
-                return {"input_ids": self.data[idx], "labels": self.labels[idx]}
-
-        class DummyModel(nn.Module):
-            def __init__(self, size: int):
-                super().__init__()
-                self.fc = nn.Linear(10, 10, bias=False)
-                # data_order logs the order of data points seen by the model
-                self.register_buffer("data_order", torch.empty(0, dtype=torch.long))
-
-            def load_state_dict(self, state_dict, strict=True):
-                # Handle data_order buffer size mismatch during checkpoint loading
-                if "data_order" in state_dict:
-                    saved_data_order = state_dict["data_order"]
-                    if hasattr(self, "data_order") and self.data_order.shape != saved_data_order.shape:
-                        # Resize the buffer to match the saved state
-                        self.data_order = saved_data_order.clone()
-
-                return super().load_state_dict(state_dict, strict=strict)
-
-            def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None):
-                logits = self.fc(input_ids)
-                loss = None
-                if labels is not None:
-                    loss_fn = nn.CrossEntropyLoss()
-                    loss = loss_fn(logits, labels)
-
-                # Log the data order for verification
-                data_indices = input_ids[:, 0].int()
-                self.data_order = torch.cat([self.data_order, data_indices.detach().clone()])
-
-                return {"loss": loss, "logits": logits}
-
-        # Scenario 1: Run baseline training to completion
-        # 1.1 Run training to completion
-        set_seed(42)
-        train_dataset = DummyDataset(size=10)
-        model_baseline = DummyModel(size=10)
-
-        exp_dir_baseline = self.get_auto_remove_tmp_dir()
-        args_baseline = TrainingArguments(
-            output_dir=str(exp_dir_baseline),
-            seed=42,
-            learning_rate=0.1,
-            per_device_train_batch_size=2,
-            gradient_accumulation_steps=1,
-            save_strategy="steps",
-            save_steps=1,
-            num_train_epochs=3,
-            optim="sgd",
-            disable_tqdm=True,
-            dataloader_num_workers=0,  # Ensures that main process loads the data
-            report_to=[],  # Disable wandb/tensorboard and other loggers
-        )
-
-        trainer_baseline = Trainer(
-            model=model_baseline,
-            args=args_baseline,
-            train_dataset=train_dataset,
-        )
-
-        trainer_baseline.train()
-
-        # 1.2 Get the data order from the last saved checkpoint for the full run
-        last_checkpoint_path = get_last_checkpoint(exp_dir_baseline)
-        last_ckpt_num = int(os.path.basename(last_checkpoint_path).split("-")[1])  # Must be 15
-
-        baseline_state_dict = safetensors.torch.load_file(
-            os.path.join(exp_dir_baseline, f"checkpoint-{last_ckpt_num}", "model.safetensors")
-        )
-        baseline_data_order = baseline_state_dict["data_order"]
-
-        # Scenario 2: Resume training from checkpoint in the middle of the second epoch
-        # 2.1 Resume training from the second batch of epoch 1 (target_ckpt_num = 7)
-        # 1 epoch consists of 10 points, so 5 steps with batch size 2
-        target_ckpt_num = 7
-        checkpoint_path = os.path.join(exp_dir_baseline, f"checkpoint-{target_ckpt_num - 1}")
-
-        set_seed(42)
-        model_resume = DummyModel(size=10)
-
-        exp_dir_resume = self.get_auto_remove_tmp_dir()
-        args_resume = TrainingArguments(
-            output_dir=str(exp_dir_resume),
-            seed=42,
-            learning_rate=0.1,
-            per_device_train_batch_size=2,
-            gradient_accumulation_steps=1,
-            save_strategy="steps",
-            save_steps=1,
-            num_train_epochs=3,
-            optim="sgd",
-            disable_tqdm=True,
-            dataloader_num_workers=0,  # Ensures that main process loads the data
-            report_to=[],  # Disable wandb/tensorboard and other loggers
-        )
-
-        trainer_resume = Trainer(
-            model=model_resume,
-            args=args_resume,
-            train_dataset=train_dataset,
-        )
-
-        trainer_resume.train(resume_from_checkpoint=checkpoint_path)
-
-        # 2.2 Get the data order from the last saved checkpoint for the resumed run
-        resumed_state_dict = safetensors.torch.load_file(
-            os.path.join(exp_dir_resume, f"checkpoint-{last_ckpt_num}", "model.safetensors")
-        )
-        resumed_data_order = resumed_state_dict["data_order"]
-
-        # 3. Compare results: the data order should be identical
-        self.assertTrue(
-            torch.equal(baseline_data_order, resumed_data_order),
-            f"Data order mismatch after checkpoint deletion and resume.\n"
-            f"Baseline: {baseline_data_order}\n"
-            f"Resumed: {resumed_data_order}",
-        )
 
 
 @require_torch

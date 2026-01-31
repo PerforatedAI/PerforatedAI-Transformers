@@ -944,7 +944,12 @@ class ProphetNetDecoderLayer(GradientCheckpointingLayer):
     """
 )
 class ProphetNetEncoder(ProphetNetPreTrainedModel):
-    def __init__(self, config: ProphetNetConfig):
+    def __init__(self, config: ProphetNetConfig, word_embeddings: Optional[nn.Embedding] = None):
+        r"""
+        word_embeddings (`torch.nn.Embeddings` of shape `(config.vocab_size, config.hidden_size)`, *optional*):
+            The word embedding parameters. This can be used to initialize [`ProphetNetEncoder`] with pre-defined word
+            embeddings instead of randomly initialized word embeddings.
+        """
         super().__init__(config)
 
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)

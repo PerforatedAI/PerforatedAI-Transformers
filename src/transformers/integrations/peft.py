@@ -16,8 +16,9 @@ import inspect
 import json
 import os
 import re
-from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import Any, Optional, Union
+
+from packaging import version
 
 from ..conversion_mapping import (
     _MODEL_TO_CONVERSION_PATTERN,
@@ -369,7 +370,7 @@ class PeftAdapterMixin:
     prompt tuning, prompt learning are out of scope as these adapters are not "injectable" into a torch module. For
     using these methods, please refer to the usage guide of PEFT library.
 
-    With this mixin, if the correct PEFT version is installed (>= 0.18.0), it is possible to:
+    With this mixin, if the correct PEFT version is installed, it is possible to:
 
     - Load an adapter stored on a local path or in a remote Hub repository, and inject it in the model
     - Attach new adapters in the model and train them with Trainer or by your own.
@@ -383,10 +384,16 @@ class PeftAdapterMixin:
 
     def load_adapter(
         self,
-        peft_model_id: str | None = None,
-        adapter_name: str | None = None,
-        peft_config: dict[str, Any] | None = None,
-        adapter_state_dict: dict[str, "torch.Tensor"] | None = None,
+        peft_model_id: Optional[str] = None,
+        adapter_name: Optional[str] = None,
+        revision: Optional[str] = None,
+        token: Optional[str] = None,
+        device_map: str = "auto",
+        max_memory: Optional[str] = None,
+        offload_folder: Optional[str] = None,
+        offload_index: Optional[int] = None,
+        peft_config: Optional[dict[str, Any]] = None,
+        adapter_state_dict: Optional[dict[str, "torch.Tensor"]] = None,
         low_cpu_mem_usage: bool = False,
         is_trainable: bool = False,
         hotswap: bool | Literal["auto"] = "auto",
@@ -407,10 +414,35 @@ class PeftAdapterMixin:
                 and adapter weights.
             adapter_name (`str`, *optional*):
                 The adapter name to use. If not set, will use the name "default".
-            load_config (`LoadStateDictConfig`, *optional*):
-                A load configuration to reuse when pulling adapter weights, typically from `from_pretrained`.
-            kwargs (`dict[str, Any]`, *optional*):
-                Additional `LoadStateDictConfig` fields passed as keyword arguments.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
+                identifier allowed by git.
+
+                > [!TIP]
+                > To test a pull request you made on the Hub, you can pass `revision="refs/pr/<pr_number>"`.
+
+            token (`str`, `optional`):
+                Whether to use authentication token to load the remote folder. Useful to load private repositories
+                that are on HuggingFace Hub. You might need to call `hf auth login` and paste your tokens to
+                cache it.
+            device_map (`str` or `dict[str, Union[int, str, torch.device]]` or `int` or `torch.device`, *optional*):
+                A map that specifies where each submodule should go. It doesn't need to be refined to each
+                parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
+                same device. If we only pass the device (*e.g.*, `"cpu"`, `"cuda:1"`, `"mps"`, or a GPU ordinal rank
+                like `1`) on which the model will be allocated, the device map will map the entire model to this
+                device. Passing `device_map = 0` means put the whole model on GPU 0.
+
+                To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
+                more information about each option see [designing a device
+                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            max_memory (`Dict`, *optional*):
+                A dictionary device identifier to maximum memory. Will default to the maximum memory available for each
+                GPU and the available CPU RAM if unset.
+            offload_folder (`str` or `os.PathLike`, `optional`):
+                If the `device_map` contains any value `"disk"`, the folder where we will offload weights.
+            offload_index (`int`, `optional`):
+                `offload_index` argument to be passed to `accelerate.dispatch_model` method.
             peft_config (`dict[str, Any]`, *optional*):
                 The configuration of the adapter to add, supported adapters are all non-prompt learning configs (LoRA,
                 IA³, etc). This argument is used in case users directly pass PEFT state dicts.
@@ -789,7 +821,7 @@ class PeftAdapterMixin:
 
         return active_adapters
 
-    def get_adapter_state_dict(self, adapter_name: str | None = None, state_dict: dict | None = None) -> dict:
+    def get_adapter_state_dict(self, adapter_name: Optional[str] = None, state_dict: Optional[dict] = None) -> dict:
         """
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
@@ -884,11 +916,39 @@ class PeftAdapterMixin:
         """
 
         check_peft_version(min_version=MIN_PEFT_VERSION)
+        min_version_delete_adapter = "0.18.0"
 
         if not self._hf_peft_config_loaded:
             raise ValueError("No adapter loaded. Please load an adapter first.")
 
-        from peft.functional import delete_adapter
+        # TODO: delete old version once support for PEFT < 0.18.0 is dropped
+        def old_delete_adapter(model, adapter_name, prefix=None):
+            from peft.tuners.tuners_utils import BaseTunerLayer
+            from peft.utils import ModulesToSaveWrapper
+
+            has_modules_to_save = False
+            for module in model.modules():
+                if isinstance(module, ModulesToSaveWrapper):
+                    has_modules_to_save |= True
+                    continue
+                if isinstance(module, BaseTunerLayer):
+                    if hasattr(module, "delete_adapter"):
+                        module.delete_adapter(adapter_name)
+                    else:
+                        raise ValueError(
+                            "The version of PEFT you are using is not compatible, please use a version that is greater than 0.6.1"
+                        )
+
+            if has_modules_to_save:
+                logger.warning(
+                    "The deleted adapter contains modules_to_save, which could not be deleted. For this to work, PEFT version "
+                    f">= {min_version_delete_adapter} is required."
+                )
+
+        if version.parse(importlib.metadata.version("peft")) >= version.parse(min_version_delete_adapter):
+            from peft.functional import delete_adapter
+        else:
+            delete_adapter = old_delete_adapter
 
         if isinstance(adapter_names, str):
             adapter_names = [adapter_names]

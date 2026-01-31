@@ -40,6 +40,8 @@ This model was contributed by [Alexander Brooks](https://huggingface.co/abrooks9
 ## Usage tips
 
 - This model bundles its own LoRA adapter, which will be automatically loaded and enabled/disabled as needed during inference calls. Be sure to install [PEFT](https://github.com/huggingface/peft) to ensure the LoRA is correctly applied!
+
+- This model bundles its own LoRA adapter, which will be automatically loaded and enabled/disabled as needed during inference calls. Be sure to install [PEFT](https://github.com/huggingface/peft) to ensure the LoRA is correctly applied!
 - The model expects 16kHz sampling rate audio. The processor will automatically resample if needed.
 - The LoRA adapter is automatically enabled when audio features are present and disabled for text-only inputs, so you don't need to manage it manually.
 
@@ -160,7 +162,6 @@ for i, transcription in enumerate(transcriptions):
 ## GraniteSpeechProcessor
 
 [[autodoc]] GraniteSpeechProcessor
-    - __call__
 
 ## GraniteSpeechFeatureExtractor
 

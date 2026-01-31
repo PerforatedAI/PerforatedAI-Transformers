@@ -23,9 +23,11 @@ import os
 import warnings
 from collections.abc import Sequence
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
-import httpx
+
+if TYPE_CHECKING:
+    import torch
 import numpy as np
 from packaging import version
 
@@ -332,7 +334,7 @@ def mel_to_hertz(mels: float | np.ndarray, mel_scale: str = "htk") -> float | np
     return freq
 
 
-def hertz_to_octave(freq: float | np.ndarray, tuning: float = 0.0, bins_per_octave: int = 12):
+def hertz_to_octave(freq: Union[float, np.ndarray], tuning: float = 0.0, bins_per_octave: int = 12):
     """
     Convert frequency from hertz to fractional octave numbers.
     Adapted from *librosa*.
@@ -380,8 +382,8 @@ def chroma_filter_bank(
     num_chroma: int,
     sampling_rate: int,
     tuning: float = 0.0,
-    power: float | None = 2.0,
-    weighting_parameters: tuple[float, float] | None = (5.0, 2.0),
+    power: Optional[float] = 2.0,
+    weighting_parameters: Optional[tuple[float, float]] = (5.0, 2.0),
     start_at_c_chroma: bool = True,
 ):
     """
@@ -638,7 +640,7 @@ def spectrogram(
     log_mel: str | None = None,
     reference: float = 1.0,
     min_value: float = 1e-10,
-    db_range: float | None = None,
+    db_range: Optional[float] = None,
     remove_dc_offset: bool = False,
     dtype: np.dtype = np.float32,
 ) -> np.ndarray:
@@ -849,7 +851,7 @@ def spectrogram_batch(
     log_mel: str | None = None,
     reference: float = 1.0,
     min_value: float = 1e-10,
-    db_range: float | None = None,
+    db_range: Optional[float] = None,
     remove_dc_offset: bool = False,
     dtype: np.dtype = np.float32,
 ) -> list[np.ndarray]:

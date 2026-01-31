@@ -257,6 +257,8 @@ A [`StoppingCriteria`] can be used to change when to stop generation (other than
 [[autodoc]] QuantizedCache
 
 [[autodoc]] EncoderDecoderCache
+    - to_legacy_cache
+    - from_legacy_cache
 
 ## Watermark Utils
 

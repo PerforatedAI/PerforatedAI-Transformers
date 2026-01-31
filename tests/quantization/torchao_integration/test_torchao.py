@@ -645,8 +645,7 @@ class TorchAoAcceleratorTest(TorchAoTest):
             "lm_head": 0,
         }
 
-        config = Int4WeightOnlyConfig(**self.quant_scheme_kwargs)
-        quant_config = TorchAoConfig(config)
+        quant_config = TorchAoConfig("int4_weight_only", **self.quant_scheme_kwargs)
 
         quantized_model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
@@ -720,8 +719,7 @@ class TorchAoAcceleratorTest(TorchAoTest):
 
         check_autoquantized(self, quantized_model.model.layers[0].self_attn.v_proj)
 
-        EXPECTED_OUTPUTS = ["What are we having for dinner?\n\nJessica: (smiling)", "What are we having for dinner?"]
-
+        EXPECTED_OUTPUT = "What are we having for dinner?\n\nJessica: (smiling)"
         output = quantized_model.generate(
             **input_ids, max_new_tokens=self.max_new_tokens, cache_implementation="static"
         )
@@ -734,7 +732,12 @@ class TorchAoSerializationTest(unittest.TestCase):
     input_text = "What are we having for dinner?"
     max_new_tokens = 10
     model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-
+    quant_scheme = "int4_weight_only"
+    quant_scheme_kwargs = (
+        {"group_size": 32, "layout": Int4CPULayout(), "version": 1}
+        if is_torchao_available() and version.parse(importlib.metadata.version("torchao")) >= version.parse("0.8.0")
+        else {"group_size": 32}
+    )
     device = "cpu"
 
     # called only once for all test in this class
@@ -771,17 +774,14 @@ class TorchAoSerializationTest(unittest.TestCase):
 
         self.assertEqual(self.tokenizer.decode(output[0], skip_special_tokens=True), self.EXPECTED_OUTPUT)
 
-    def check_serialization_expected_output(self, device, expected_output):
+    def check_serialization_expected_output(self, device, expected_output, safe_serialization=False):
         """
         Test if we can serialize and load/infer the model again on the same device
         """
         dtype = torch.bfloat16 if isinstance(self.quant_scheme, Int4WeightOnlyConfig) else "auto"
         with tempfile.TemporaryDirectory() as tmpdirname:
-            self.quantized_model.save_pretrained(tmpdirname)
-
-            loaded_quantized_model = AutoModelForCausalLM.from_pretrained(
-                tmpdirname, dtype=dtype, device_map=device, torch_dtype=dtype
-            )
+            self.quantized_model.save_pretrained(tmpdirname, safe_serialization=safe_serialization)
+            loaded_quantized_model = AutoModelForCausalLM.from_pretrained(tmpdirname, dtype=dtype, device_map=device)
             input_ids = self.tokenizer(self.input_text, return_tensors="pt").to(device)
 
             output = loaded_quantized_model.generate(**input_ids, max_new_tokens=self.max_new_tokens)
@@ -792,15 +792,49 @@ class TorchAoSerializationTest(unittest.TestCase):
 
 
 @require_torchao
-@require_torchao_version_greater_or_equal("0.15.0")
+@require_torchao_version_greater_or_equal("0.14.0")
 class TorchAoSafeSerializationTest(TorchAoSerializationTest):
     # called only once for all test in this class
     @classmethod
     def setUpClass(cls):
         cls.tokenizer = AutoTokenizer.from_pretrained(cls.model_name)
-        cls.EXPECTED_OUTPUT = "What are we having for dinner?\n\nJessica: (smiling)"
-        # placeholder
-        cls.quant_scheme = torchao.quantization.Float8WeightOnlyConfig()
+        cls.EXPECTED_OUTPUT = "What are we having for dinner?\n- 1. What is the temperature outside"
+
+    def tearDown(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+        gc.collect()
+        if hasattr(self, "quantized_model"):
+            del self.quantized_model
+        gc.collect()
+
+    test_params = (
+        [
+            (
+                torchao.quantization.Float8DynamicActivationFloat8WeightConfig(),
+                "What are we having for dinner?\n\nJess: (smiling) I",
+            ),
+            (torchao.quantization.Float8WeightOnlyConfig(), "What are we having for dinner?\n\nJessica: (smiling)"),
+        ]
+        if is_torchao_available()
+        else []
+    )
+
+    @parameterized.expand(test_params, skip_on_empty=True)
+    def test_serialization_expected_output(self, config, expected_output):
+        device = "cuda"
+        self.quant_config = TorchAoConfig(config)
+        self.quantized_model = AutoModelForCausalLM.from_pretrained(
+            self.model_name,
+            dtype=torch.bfloat16,
+            device_map=device,
+            quantization_config=self.quant_config,
+        )
+        self.check_serialization_expected_output(device, expected_output, safe_serialization=True)
+
+
+class TorchAoSerializationW8A8CPUTest(TorchAoSerializationTest):
+    quant_scheme, quant_scheme_kwargs = "int8_dynamic_activation_int8_weight", {}
 
     def tearDown(self):
         gc.collect()
@@ -882,6 +916,7 @@ class TorchAoSerializationW8CPUTest(TorchAoSerializationTest):
 @require_torch_accelerator
 @require_torchao
 class TorchAoSerializationAcceleratorTest(TorchAoSerializationTest):
+    quant_scheme, quant_scheme_kwargs = "int4_weight_only", {"group_size": 32, "version": 1}
     device = f"{torch_device}:0"
 
     # called only once for all test in this class

@@ -20,7 +20,7 @@ import pytest
 from packaging import version
 from parameterized import parameterized
 
-from transformers import AutoTokenizer, BitsAndBytesConfig, DynamicCache, is_torch_available, set_seed
+from transformers import AutoTokenizer, DynamicCache, is_torch_available, set_seed
 from transformers.cache_utils import DynamicSlidingWindowLayer
 from transformers.testing_utils import (
     DeviceProperties,
@@ -54,6 +54,17 @@ class MistralModelTester(CausalLMModelTester):
 
 @require_torch
 class MistralModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": MistralModel,
+            "text-classification": MistralForSequenceClassification,
+            "token-classification": MistralForTokenClassification,
+            "text-generation": MistralForCausalLM,
+            "question-answering": MistralForQuestionAnswering,
+        }
+        if is_torch_available()
+        else {}
+    )
     model_tester_class = MistralModelTester
 
     # TODO (ydshieh): Check this. See https://app.circleci.com/pipelines/github/huggingface/transformers/79245/workflows/9490ef58-79c2-410d-8f51-e3495156cf9c/jobs/1012146

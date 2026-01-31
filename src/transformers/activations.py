@@ -51,10 +51,6 @@ class GELUTanh(nn.Module):
         return self.act(input)
 
 
-# Added for compatibility with autoawq which is archived now and imports PytorchGELUTanh from activations.py
-PytorchGELUTanh = GELUTanh
-
-
 @use_kernel_forward_from_hub("NewGELU")
 class NewGELUActivation(nn.Module):
     """

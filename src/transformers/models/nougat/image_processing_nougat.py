@@ -156,8 +156,8 @@ class NougatImageProcessor(BaseImageProcessor):
         self,
         image: np.ndarray,
         gray_threshold: int = 200,
-        data_format: ChannelDimension | None = None,
-        input_data_format: str | ChannelDimension | None = None,
+        data_format: Optional[ChannelDimension] = None,
+        input_data_format: Optional[Union[str, ChannelDimension]] = None,
     ) -> np.ndarray:
         """
         Crops the margin of the image. Gray pixels are considered margin (i.e., pixels with a value below the

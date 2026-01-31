@@ -15,7 +15,7 @@
 
 # /// script
 # dependencies = [
-#     "transformers @ git+https://github.com/huggingface/transformers.git",
+#     "transformers==4.57.5",
 #     "datasets[audio] >= 1.18.0",
 #     "torch >= 1.5",
 #     "torchaudio",
@@ -52,13 +52,13 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
-from transformers.trainer_utils import is_main_process
+from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.57.0.dev0")
+check_min_version("4.57.0")
 
 require_version(
     "datasets>=1.18.0",
@@ -142,7 +142,7 @@ class ModelArguments:
         metadata={"help": "Length of vector span to mask along the feature axis."},
     )
     layerdrop: float = field(default=0.0, metadata={"help": "The LayerDrop probability."})
-    ctc_loss_reduction: str | None = field(
+    ctc_loss_reduction: Optional[str] = field(
         default="mean",
         metadata={"help": "The way the ctc loss should be reduced. Should be one of 'mean' or 'sum'."},
     )
@@ -426,6 +426,21 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    # Detecting last checkpoint.
+    last_checkpoint = None
+    if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
+        last_checkpoint = get_last_checkpoint(training_args.output_dir)
+        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+            raise ValueError(
+                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
+                "Use --overwrite_output_dir to overcome."
+            )
+        elif last_checkpoint is not None:
+            logger.info(
+                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
+            )
+
     # Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -563,8 +578,8 @@ def main():
                     json.dump(vocab_dict, file)
 
         tokenizer_kwargs = {
-            "config": config,
-            "tokenizer_type": config.model_type,
+            "config": config if config.tokenizer_class is not None else None,
+            "tokenizer_type": (config.model_type if config.tokenizer_class is None else None),
             "unk_token": unk_token,
             "pad_token": pad_token,
             "word_delimiter_token": word_delimiter_token,

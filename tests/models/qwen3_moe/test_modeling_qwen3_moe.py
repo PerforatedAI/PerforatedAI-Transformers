@@ -17,7 +17,7 @@ import unittest
 
 import pytest
 
-from transformers import AutoTokenizer, BitsAndBytesConfig, is_torch_available, set_seed
+from transformers import AutoTokenizer, is_torch_available, set_seed
 from transformers.testing_utils import (
     cleanup,
     is_flaky,
@@ -36,6 +36,8 @@ if is_torch_available():
 
     from transformers import (
         Qwen3MoeForCausalLM,
+        Qwen3MoeForSequenceClassification,
+        Qwen3MoeForTokenClassification,
         Qwen3MoeModel,
     )
 from ...causal_lm_tester import CausalLMModelTest, CausalLMModelTester
@@ -48,6 +50,18 @@ class Qwen3MoeModelTester(CausalLMModelTester):
 
 @require_torch
 class Qwen3MoeModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": Qwen3MoeModel,
+            "text-classification": Qwen3MoeForSequenceClassification,
+            "token-classification": Qwen3MoeForTokenClassification,
+            "text-generation": Qwen3MoeForCausalLM,
+            "question-answering": Qwen3ForQuestionAnswering,
+        }
+        if is_torch_available()
+        else {}
+    )
+
     test_all_params_have_gradient = False
     model_tester_class = Qwen3MoeModelTester
 

@@ -46,6 +46,17 @@ class GlmModelTester(CausalLMModelTester):
 
 @require_torch
 class GlmModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": GlmModel,
+            "text-classification": GlmForSequenceClassification,
+            "token-classification": GlmForTokenClassification,
+            "text-generation": GlmForCausalLM,
+        }
+        if is_torch_available()
+        else {}
+    )
+
     model_tester_class = GlmModelTester
 
 

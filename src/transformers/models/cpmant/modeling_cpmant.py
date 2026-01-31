@@ -346,11 +346,11 @@ class CpmAntEncoder(nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         position_bias: torch.Tensor,
-        output_attentions: bool | None = None,
-        output_hidden_states: bool | None = None,
-        past_key_values: Cache | None = None,
-        use_cache: bool | None = None,
-        cache_position: torch.Tensor | None = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        past_key_values: Optional[Cache] = None,
+        use_cache: Optional[bool] = None,
+        cache_position: Optional[torch.Tensor] = None,
     ):
         """
         Args:

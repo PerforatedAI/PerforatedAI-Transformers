@@ -11,7 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import TYPE_CHECKING
+import importlib
+from typing import TYPE_CHECKING, Optional, Union
+
+from packaging import version
 
 from .base import HfQuantizer
 
@@ -109,11 +112,56 @@ class Bnb8BitHfQuantizer(HfQuantizer):
             return 1
         return super().param_element_size(model, param_name, param)
 
+    def update_unexpected_keys(self, model, unexpected_keys: list[str]) -> list[str]:
+        bnb_keys = ["SCB", "weight_format"]
+        return [k for k in unexpected_keys if not any(k.endswith(x) for x in bnb_keys)]
+
     def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
         import bitsandbytes as bnb
 
         module, name = get_module_from_name(model, param_name)
         return isinstance(module, bnb.nn.Linear8bitLt) and name != "bias"
+
+    def create_quantized_param(
+        self,
+        model: "PreTrainedModel",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        **kwargs,
+    ):
+        import bitsandbytes as bnb
+
+        module, tensor_name = get_module_from_name(model, param_name)
+
+        if self.pre_quantized and not self.is_serializable():
+            raise ValueError(
+                "Detected int8 weights but the version of bitsandbytes is not compatible with int8 serialization. "
+                "Make sure to download the latest `bitsandbytes` version. `pip install --upgrade bitsandbytes`."
+            )
+        # Those 2 can only happen when self.pre_quantized == True
+        if tensor_name == "SCB":
+            setattr(module.weight, "SCB", param_value.to(target_device))
+            return
+        # It's not used, but it's getting serialized for BC reason...
+        elif tensor_name == "weight_format":
+            return
+
+        # Support models using `Conv1D` in place of `nn.Linear` (e.g. openai-community/gpt2) by transposing the weight matrix prior to quantization.
+        # Since weights are saved in the correct "orientation", we skip transposing when loading.
+        if issubclass(module.source_cls, Conv1D) and not self.pre_quantized:
+            param_value = param_value.T
+
+        old_value = getattr(module, tensor_name)
+        kwargs = old_value.__dict__
+        kwargs.pop("_is_hf_initialized", None)
+        # Need to pop SCB and reset it because of bnb internals that modifies its value when switching devices ...
+        SCB = kwargs.pop("SCB", None)
+        new_value = bnb.nn.Int8Params(param_value.to("cpu"), requires_grad=False, **kwargs).to(target_device)
+        if SCB is not None:
+            setattr(new_value, "SCB", SCB)
+        # Set it to the module
+        module._parameters[tensor_name] = new_value
 
     def _process_model_after_weight_loading(self, model: "PreTrainedModel", **kwargs):
         model.is_loaded_in_8bit = True
@@ -138,10 +186,14 @@ class Bnb8BitHfQuantizer(HfQuantizer):
                 self.modules_to_not_convert.extend(keys_on_cpu)
 
         model = replace_with_bnb_linear(
-            model,
-            modules_to_not_convert=self.modules_to_not_convert,
-            quantization_config=self.quantization_config,
-            pre_quantized=self.pre_quantized,
+            model, modules_to_not_convert=self.modules_to_not_convert, quantization_config=self.quantization_config
+        )
+
+        model.config.quantization_config = self.quantization_config
+
+    def is_serializable(self, safe_serialization=None):
+        _bnb_supports_8bit_serialization = version.parse(importlib.metadata.version("bitsandbytes")) > version.parse(
+            "0.37.2"
         )
 
     def is_serializable(self):

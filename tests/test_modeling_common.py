@@ -125,8 +125,7 @@ if is_torch_available():
     from torch import nn
 
     from transformers import MODEL_MAPPING
-    from transformers.integrations.accelerate import compute_module_sizes
-    from transformers.integrations.tensor_parallel import _get_parameter_tp_plan
+    from transformers.cache_utils import Cache, DynamicCache
     from transformers.modeling_utils import load_state_dict
     from transformers.pytorch_utils import id_tensor_storage
 
@@ -759,6 +758,7 @@ class ModelTesterMixin:
                 *get_values(MODEL_FOR_IMAGE_TEXT_TO_TEXT_MAPPING_NAMES),
                 *get_values(MODEL_FOR_MASKED_LM_MAPPING_NAMES),
                 *get_values(MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING_NAMES),
+                *get_values(MODEL_FOR_VISION_2_SEQ_MAPPING_NAMES),
                 *get_values(MODEL_FOR_CTC_MAPPING_NAMES),
             ]:
                 inputs_dict["labels"] = torch.zeros(
@@ -792,7 +792,6 @@ class ModelTesterMixin:
             "Owlv2TextModelTest": 12,
             "Owlv2ForObjectDetectionTest": 12,
             "Qwen2_5OmniThinkerForConditionalGenerationModelTest": 4,
-            "Qwen3OmniMoeThinkerForConditionalGenerationModelTest": 4,
             "SamHQModelTest": 12,
             "Swin2SRModelTest": 3,
             "XLNetModelTest": 3,
@@ -2399,6 +2398,38 @@ class ModelTesterMixin:
                     model, loading_info = model_class.from_pretrained(temp_dir_name, output_loading_info=True)
                     self.assertGreater(len(loading_info["missing_keys"]), 0, model.__class__.__name__)
 
+    def test_tie_model_weights(self):
+        if not self.test_torchscript:
+            self.skipTest(reason="test_torchscript is set to `False`")
+
+        config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
+
+        def check_same_values(layer_1, layer_2):
+            equal = True
+            for p1, p2 in zip(layer_1.weight, layer_2.weight):
+                if p1.data.ne(p2.data).sum() > 0:
+                    equal = False
+            return equal
+
+        for model_class in self.all_model_classes:
+            config.torchscript = True
+            model_not_tied = model_class(copy.deepcopy(config))
+            if model_not_tied.get_output_embeddings() is None:
+                continue
+
+            config_tied = copy.deepcopy(config)
+            config_tied.torchscript = False
+            model_tied = model_class(config_tied)
+            params_tied = list(model_tied.parameters())
+            # Check that the embedding layer and decoding layer are the same in size and in value
+            # self.assertTrue(check_same_values(embeddings, decoding))
+
+            # Check that after resize they remain tied.
+            vocab_size = config.get_text_config().vocab_size
+            model_tied.resize_token_embeddings(vocab_size + 10)
+            params_tied_2 = list(model_tied.parameters())
+            self.assertEqual(len(params_tied_2), len(params_tied))
+
     def test_can_use_safetensors(self):
         for model_class in self.all_model_classes:
             config, _ = self.model_tester.prepare_config_and_inputs_for_common()
@@ -3101,21 +3132,18 @@ class ModelTesterMixin:
                         ]
                     # Usually we have only 1, but swiftformer and deit have 2 Linear layers using `num_labels`
                     mismatched_modules = [name for name, module in top_linear_modules if module.out_features == 42]
-                    old = dict(model.named_parameters())
-                    new = dict(new_model.named_parameters())
-                    assert not set(old.keys()) - set(new.keys())
-                    for k1 in new.keys():
-                        k2 = k1
-                        v1 = old[k1]
-                        v2 = new[k2]
+
+                    for (k1, v1), (k2, v2) in zip(new_model.named_parameters(), model.named_parameters()):
+                        # Sanity check: params must have all the same name
+                        self.assertEqual(k1, k2)
                         # Each param except the mismatched ones must be exactly similar
                         if not any(k1.startswith(mismatched_module) for mismatched_module in mismatched_modules):
-                            torch.testing.assert_close(v1, v2, msg=f"{k1} and  {k2} do not match: {v1} != {v2}")
+                            self.assertTrue((v1 == v2).all())
                         # Check that the dims are indeed mismatched between old and new models
                         else:
                             # The old model should have `num_labels=3` (here it's the first dim of shape, as Linear layers
                             # are transposed)
-                            self.assertEqual(v2.shape[0], 42)
+                            self.assertEqual(v2.shape[0], 3)
                             # Make sure the mean of the new Linear layer is correctly centered around 0 (we cannot use
                             # a lower value for the check as some models hardcode a std of 0.02 instead of using the
                             # config, which we set very small with `config_no_init`)
@@ -3934,7 +3962,6 @@ class ModelTesterMixin:
             config.use_sliding_window = True
             config_dict = config.to_diff_dict()
             config_dict.pop("layer_types", None)
-            config_dict.pop("rope_parameters", None)
             new_config = config.__class__(**config_dict)
             # We need to set eager as otherwise `output_attentions` is not supported
             model = model_class._from_config(new_config, attn_implementation="eager").to(torch_device)
@@ -3952,7 +3979,6 @@ class ModelTesterMixin:
             config.use_sliding_window = False
             config_dict = config.to_diff_dict()
             config_dict.pop("layer_types", None)
-            config_dict.pop("rope_parameters", None)
             new_config = config.__class__(**config_dict)
             # We need to set eager as otherwise `output_attentions` is not supported
             model = model_class._from_config(new_config, attn_implementation="eager").to(torch_device)

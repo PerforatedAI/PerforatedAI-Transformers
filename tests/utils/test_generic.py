@@ -18,7 +18,7 @@ import warnings
 import numpy as np
 import pytest
 
-from transformers.configuration_utils import PreTrainedConfig
+from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput, CausalLMOutputWithPast
 from transformers.testing_utils import require_torch
 from transformers.utils import (

@@ -38,11 +38,12 @@ class Qwen3VLProcessorTest(ProcessorTesterMixin, unittest.TestCase):
     model_id = "Qwen/Qwen3-VL-235B-A22B-Instruct"
 
     @classmethod
-    def _setup_from_pretrained(cls, model_id, **kwargs):
-        return super()._setup_from_pretrained(model_id, patch_size=4, max_pixels=56 * 56, min_pixels=28 * 28, **kwargs)
-
-    @classmethod
-    def _setup_test_attributes(cls, processor):
+    def setUpClass(cls):
+        cls.tmpdirname = tempfile.mkdtemp()
+        processor = Qwen3VLProcessor.from_pretrained(
+            "Qwen/Qwen3-VL-235B-A22B-Instruct", patch_size=4, max_pixels=56 * 56, min_pixels=28 * 28
+        )
+        processor.save_pretrained(cls.tmpdirname)
         cls.image_token = processor.image_token
 
     def test_get_num_vision_tokens(self):

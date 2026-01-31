@@ -17,7 +17,7 @@ from functools import lru_cache
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils_fast import BaseImageProcessorFast, BatchFeature
 from ...image_transforms import group_images_by_shape, reorder_images
@@ -27,7 +27,19 @@ from ...utils import (
     TensorType,
     auto_docstring,
 )
-from .image_processing_efficientnet import EfficientNetImageProcessorKwargs
+
+
+class EfficientNetFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    """
+    Args:
+        rescale_offset (`bool`, *optional*, defaults to `self.rescale_offset`):
+            Whether to rescale the image between [-max_range/2, scale_range/2] instead of [0, scale_range].
+        include_top (`bool`, *optional*, defaults to `self.include_top`):
+            Normalize the image again with the standard deviation only for image classification if set to True.
+    """
+
+    rescale_offset: bool
+    include_top: bool
 
 
 @auto_docstring

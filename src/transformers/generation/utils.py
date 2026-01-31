@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import torch
 import torch.distributed as dist
+from packaging import version
 from torch import nn
 
 from ..cache_utils import (
@@ -1764,7 +1765,8 @@ class GenerationMixin(ContinuousMixin):
 
     def _prepare_generation_config(
         self,
-        generation_config: GenerationConfig | None,
+        generation_config: Optional[GenerationConfig],
+        use_model_defaults: Optional[bool] = None,
         **kwargs: Any,
     ) -> tuple[GenerationConfig, dict]:
         """
@@ -1919,7 +1921,7 @@ class GenerationMixin(ContinuousMixin):
                 "minimax",
                 "xlnet",
                 "lfm2",
-                "lfm2_vl",
+                "lfm2-vl",
             ]
         )
 
@@ -3555,7 +3557,7 @@ class GenerationMixin(ContinuousMixin):
         generation_config: GenerationConfig,
         synced_gpus: bool = False,
         streamer: Optional["BaseStreamer"] = None,
-        inputs_tensor: torch.FloatTensor | None = None,
+        inputs_tensor: Optional[torch.FloatTensor] = None,
         assistant_model: Optional["PreTrainedModel"] = None,
         assistant_tokenizer: Optional["PreTrainedTokenizerBase"] = None,
         tokenizer: Optional["PreTrainedTokenizerBase"] = None,

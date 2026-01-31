@@ -57,17 +57,6 @@ if is_vision_available():
     from PIL import Image
 
 
-class LlavaNextImageProcessorKwargs(ImagesKwargs, total=False):
-    r"""
-    image_grid_pinpoints (`list[list[int]]`, *optional*):
-        A list of possible resolutions to use for processing high resolution images. The best resolution is selected
-        based on the original size of the image. Can be overridden by `image_grid_pinpoints` in the `preprocess`
-        method.
-    """
-
-    image_grid_pinpoints: list[list[int]]
-
-
 def divide_to_patches(image: np.ndarray, patch_size: int, input_data_format) -> list[np.ndarray]:
     """
     Divides an image into patches of a specified size.

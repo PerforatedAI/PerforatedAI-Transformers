@@ -603,15 +603,13 @@ class RecurrentGemmaPreTrainedModel(PreTrainedModel):
             if getattr(module, "bias", None) is not None:
                 init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            init.normal_(module.weight, mean=0.0, std=std)
-            # Here we need the check explicitly, as we slice the weight in the `zeros_` call, so it looses the flag
-            if module.padding_idx is not None and not getattr(module.weight, "_is_hf_initialized", False):
-                init.zeros_(module.weight[module.padding_idx])
+            module.weight.data.normal_(mean=0.0, std=std)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
+
         # We initialize with 0s to be 1 centered as the RMSNorm here does (1 + weight)
         elif isinstance(module, RecurrentGemmaRMSNorm):
-            init.zeros_(module.weight)
-        elif isinstance(module, RecurrentGemmaModel):
-            init.constant_(module.normalizer, module.config.hidden_size**0.5)
+            module.weight.data.zero_()
 
     def _setup_cache(self, config, batch, device, dtype):
         layers = getattr(self, "model", self).layers

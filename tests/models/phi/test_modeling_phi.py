@@ -43,6 +43,17 @@ class PhiModelTester(CausalLMModelTester):
 
 @require_torch
 class PhiModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": PhiModel,
+            "text-classification": PhiForSequenceClassification,
+            "token-classification": PhiForTokenClassification,
+            "text-generation": PhiForCausalLM,
+        }
+        if is_torch_available()
+        else {}
+    )
+
     model_tester_class = PhiModelTester
 
     # TODO (ydshieh): Check this. See https://app.circleci.com/pipelines/github/huggingface/transformers/79292/workflows/fa2ba644-8953-44a6-8f67-ccd69ca6a476/jobs/1012905

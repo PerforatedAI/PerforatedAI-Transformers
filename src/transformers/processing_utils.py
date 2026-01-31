@@ -404,14 +404,17 @@ class AudioKwargs(TypedDict, total=False):
             - `'np'`: Return NumPy `np.ndarray` objects.
     """
 
-    sampling_rate: Annotated[int | None, positive_int()]
-    raw_speech: Union["np.ndarray", list[float], list["np.ndarray"], list[list[float]]] | None
-    padding: Annotated[bool | str | PaddingStrategy | None, padding_validator()]
-    max_length: Annotated[int | None, positive_int()]
-    truncation: Annotated[bool | str | TruncationStrategy | None, truncation_validator()]
-    pad_to_multiple_of: Annotated[int | None, positive_int()]
-    return_attention_mask: bool | None
-    return_tensors: Annotated[str | TensorType | None, tensor_type_validator()]
+    sampling_rate: Optional[int]
+    raw_speech: Optional[Union[np.ndarray, list[float], list[np.ndarray], list[list[float]]]]
+    padding: Optional[Union[bool, str, PaddingStrategy]]
+    max_length: Optional[int]
+    truncation: Optional[bool]
+    pad_to_multiple_of: Optional[int]
+    return_attention_mask: Optional[bool]
+
+
+class CommonKwargs(TypedDict, total=False):
+    return_tensors: Optional[Union[str, TensorType]]
 
 
 class ProcessingKwargs(TypedDict, total=False):

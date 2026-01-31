@@ -71,10 +71,6 @@ class Kosmos2ProcessorTest(ProcessorTesterMixin, unittest.TestCase):
         image_processor_class = cls._get_component_class_from_processor("image_processor")
         return image_processor_class(do_center_crop=False)
 
-    @unittest.skip("Kosmos2Processor adds special tokens to the text")
-    def test_tokenizer_defaults(self):
-        pass
-
     def test_image_processor_load_save_reload(self):
         # make sure load from Hub repo. -> save -> reload locally work
         image_processor = CLIPImageProcessor.from_pretrained("microsoft/kosmos-2-patch14-224")

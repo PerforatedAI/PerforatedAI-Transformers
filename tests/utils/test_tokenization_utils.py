@@ -75,6 +75,49 @@ class TokenizerUtilTester(unittest.TestCase):
             # This check we did call the fake head request
             mock_head.assert_called()
 
+    def test_offline_mode_does_not_call_model_info_api(self):
+        # Test that when in offline mode, model_info is not called during Mistral base check
+        # This prevents network errors when loading tokenizers offline
+
+        # Download this model to make sure it's in the cache
+        _ = BertTokenizer.from_pretrained("hf-internal-testing/tiny-random-bert")
+
+        # Mock is_offline_mode to return True
+        with mock.patch("transformers.tokenization_utils_base.is_offline_mode", return_value=True):
+            # Mock model_info to track if it's called
+            with mock.patch("huggingface_hub.model_info") as mock_model_info:
+                # Load tokenizer in offline mode
+                _ = BertTokenizer.from_pretrained("hf-internal-testing/tiny-random-bert")
+                # model_info should NOT be called when in offline mode
+                mock_model_info.assert_not_called()
+
+    def test_legacy_load_from_one_file(self):
+        # This test is for deprecated behavior and can be removed in v5
+        try:
+            tmp_file = tempfile.NamedTemporaryFile(delete=False).name
+            with open(tmp_file, "wb") as f:
+                http_get("https://huggingface.co/albert/albert-base-v1/resolve/main/spiece.model", f)
+
+            _ = AlbertTokenizer.from_pretrained(tmp_file)
+        finally:
+            os.remove(tmp_file)
+
+        # Supporting this legacy load introduced a weird bug where the tokenizer would load local files if they are in
+        # the current folder and have the right name.
+        if os.path.isfile("tokenizer.json"):
+            # We skip the test if the user has a `tokenizer.json` in this folder to avoid deleting it.
+            self.skipTest(reason="Skipping test as there is a `tokenizer.json` file in the current folder.")
+        try:
+            with open("tokenizer.json", "wb") as f:
+                http_get("https://huggingface.co/hf-internal-testing/tiny-random-bert/blob/main/tokenizer.json", f)
+            tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-gpt2")
+            # The tiny random BERT has a vocab size of 1024, tiny openai-community/gpt2 as a vocab size of 1000
+            self.assertEqual(tokenizer.vocab_size, 1000)
+            # Tokenizer should depend on the remote checkpoint, not the local tokenizer.json file.
+
+        finally:
+            os.remove("tokenizer.json")
+
 
 @is_staging_test
 class TokenizerPushToHubTester(unittest.TestCase):

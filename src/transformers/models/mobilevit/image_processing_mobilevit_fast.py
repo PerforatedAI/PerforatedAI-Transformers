@@ -16,7 +16,7 @@
 from typing import Optional, Union
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import (
@@ -36,7 +36,20 @@ from ...utils import (
     TensorType,
     auto_docstring,
 )
-from .image_processing_mobilevit import MobileVitImageProcessorKwargs
+
+
+class MobileVitFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    """
+    do_flip_channel_order (`bool`, *optional*, defaults to `self.do_flip_channel_order`):
+        Whether to flip the color channels from RGB to BGR or vice versa.
+    do_reduce_labels (`bool`, *optional*, defaults to `self.do_reduce_labels`):
+        Whether or not to reduce all label values of segmentation maps by 1. Usually used for datasets where 0
+        is used for background, and background itself is not included in all classes of a dataset (e.g.
+        ADE20k). The background label will be replaced by 255.
+    """
+
+    do_flip_channel_order: Optional[bool]
+    do_reduce_labels: Optional[bool]
 
 
 @auto_docstring
@@ -114,7 +127,7 @@ class MobileViTImageProcessorFast(BaseImageProcessorFast):
                     "do_rescale": False,
                     "do_flip_channel_order": False,
                     # Nearest interpolation is used for segmentation maps instead of BILINEAR.
-                    "interpolation": tvF.InterpolationMode.NEAREST_EXACT,
+                    "interpolation": F.InterpolationMode.NEAREST_EXACT,
                 }
             )
 

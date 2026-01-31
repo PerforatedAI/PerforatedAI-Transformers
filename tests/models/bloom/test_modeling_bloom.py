@@ -190,6 +190,127 @@ class BloomModelTest(CausalLMModelTest, unittest.TestCase):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_bloom_weight_initialization(*config_and_inputs)
 
+    @slow
+    def test_model_from_pretrained(self):
+        model_name = "bigscience/bigscience-small-testing"
+        model = BloomModel.from_pretrained(model_name)
+        self.assertIsNotNone(model)
+
+    @slow
+    @require_torch_accelerator
+    def test_simple_generation(self):
+        # This test is a bit flaky. For some GPU architectures, pytorch sets by default allow_fp16_reduced_precision_reduction = True and some operations
+        # do not give the same results under this configuration, especially torch.baddmm and torch.bmm. https://pytorch.org/docs/stable/notes/numerical_accuracy.html#fp16-on-mi200
+        # As we leave the default value (True) for allow_fp16_reduced_precision_reduction, the tests failed when running in half-precision with smaller models (560m)
+        # Please see: https://pytorch.org/docs/stable/notes/cuda.html#reduced-precision-reduction-in-fp16-gemms
+        # This discrepancy is observed only when using small models and seems to be stable for larger models.
+        # Our conclusion is that these operations are flaky for small inputs but seems to be stable for larger inputs (for the functions `baddmm` and `bmm`), and therefore for larger models.
+
+        # Here is a summary of an ablation study of our observations
+        # EXPECTED_OUTPUT = "I enjoy walking with my cute dog, and I love to watch the kids play. I am a very active person, and I am a very good listener. I am a very good person, and I am a very good person. I am a"
+        # 560m + allow_fp16_reduced_precision_reduction = False  + torch.bmm  ==> PASS
+        # 560m + allow_fp16_reduced_precision_reduction = False  + torch.baddm  ==> PASS
+        # 560m + allow_fp16_reduced_precision_reduction = True  + torch.baddm  ==> PASS
+        # 560m + allow_fp16_reduced_precision_reduction = True  + torch.bmm  ==> FAIL
+
+        # EXPECTED_OUTPUT = "I enjoy walking with my cute dog, but I also enjoy hiking, biking, and swimming. I love to cook and bake. I love to cook and bake. I love to cook and bake. I love to cook and bake. I love"
+        # >=1b1 + allow_fp16_reduced_precision_reduction = True  + torch.baddm  ==> PASS  (for use_cache=True and use_cache=False)
+        # >=1b1 + allow_fp16_reduced_precision_reduction = True  + torch.bmm  ==> PASS
+        # >=1b1 + allow_fp16_reduced_precision_reduction = False  + torch.bmm  ==> PASS
+
+        path_560m = "bigscience/bloom-560m"
+        model = BloomForCausalLM.from_pretrained(path_560m, use_cache=True, revision="gs555750").to(torch_device)
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_560m)
+
+        input_sentence = "I enjoy walking with my cute dog"
+        # This output has been obtained using fp32 model on the huggingface DGX workstation - NVIDIA A100 GPU
+        EXPECTED_OUTPUT = (
+            "I enjoy walking with my cute dog, and I love to watch the kids play with the kids. I am a very "
+            "active person, and I enjoy working out, and I am a very active person. I am a very active person, and I"
+        )
+
+        input_ids = tokenizer.encode(input_sentence, return_tensors="pt")
+        greedy_output = model.generate(input_ids.to(torch_device), max_length=50)
+
+        self.assertEqual(tokenizer.decode(greedy_output[0], skip_special_tokens=True), EXPECTED_OUTPUT)
+
+    @slow
+    @require_torch_accelerator
+    def test_batch_generation(self):
+        path_560m = "bigscience/bloom-560m"
+        model = BloomForCausalLM.from_pretrained(path_560m, use_cache=True, revision="gs555750").to(torch_device)
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_560m, padding_side="left")
+
+        input_sentence = ["I enjoy walking with my cute dog", "I enjoy walking with my cute dog"]
+
+        inputs = tokenizer.batch_encode_plus(input_sentence, return_tensors="pt", padding=True)
+        input_ids = inputs["input_ids"].to(torch_device)
+        attention_mask = inputs["attention_mask"]
+        greedy_output = model.generate(input_ids, attention_mask=attention_mask, max_length=50, do_sample=False)
+
+        self.assertEqual(
+            tokenizer.decode(greedy_output[0], skip_special_tokens=True),
+            tokenizer.decode(greedy_output[1], skip_special_tokens=True),
+        )
+
+    @slow
+    @require_torch_accelerator
+    def test_batch_generation_padding(self):
+        path_560m = "bigscience/bloom-560m"
+        model = BloomForCausalLM.from_pretrained(path_560m, use_cache=True, revision="gs555750").to(torch_device)
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_560m, padding_side="left")
+
+        input_sentence = ["I enjoy walking with my cute dog", "Hello my name is"]
+        input_sentence_without_pad = "Hello my name is"
+
+        input_ids = tokenizer.batch_encode_plus(input_sentence, return_tensors="pt", padding=True)
+        input_ids_without_pad = tokenizer.encode(input_sentence_without_pad, return_tensors="pt")
+
+        input_ids, attention_mask = input_ids["input_ids"].to(torch_device), input_ids["attention_mask"]
+        greedy_output = model.generate(input_ids, attention_mask=attention_mask, max_length=50, do_sample=False)
+        greedy_output_without_pad = model.generate(
+            input_ids_without_pad.to(torch_device), max_length=50, do_sample=False
+        )
+
+        # test token values
+        self.assertEqual(greedy_output[-1, 3:].tolist(), greedy_output_without_pad[0, :-3].tolist())
+
+        # test reconstructions
+        self.assertEqual(
+            tokenizer.decode(greedy_output[-1, 3:], skip_special_tokens=True),
+            tokenizer.decode(greedy_output_without_pad[0, :-3], skip_special_tokens=True),
+        )
+
+    @slow
+    @require_torch_accelerator
+    def test_batch_generated_text(self):
+        path_560m = "bigscience/bloom-560m"
+
+        model = BloomForCausalLM.from_pretrained(path_560m, use_cache=True, revision="gs555750").to(torch_device)
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_560m, padding_side="left")
+
+        input_sentences = [
+            "Hello what is",
+            "Running a quick test with the",
+        ]
+        inputs = tokenizer(input_sentences, return_tensors="pt", padding=True, truncation=True)
+        generated_ids = model.generate(
+            inputs["input_ids"].to(torch_device), attention_mask=inputs["attention_mask"], max_length=20
+        )
+        generated_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
+        # these generations match those of the PyTorch model
+        EXPECTED_GENERATIONS = [
+            "Hello what is the best way to get the data from the server? I have tried",
+            "Running a quick test with the following command:\nsudo apt-get install python3\nsudo apt-get install python2",
+        ]
+
+        self.assertListEqual(generated_text, EXPECTED_GENERATIONS)
+
     @unittest.skip("Bloom needs a 2D attention for alibi")
     def test_custom_4d_attention_mask(self):
         pass

@@ -620,10 +620,10 @@ class T5GemmaPreTrainedModel(Gemma2PreTrainedModel):
         elif isinstance(module, T5GemmaLMHead):
             if not self.config.tie_word_embeddings:
                 scale = module.out_proj.weight.shape[0] ** -0.5
-                init.normal_(module.out_proj.weight, mean=0.0, std=std * scale)
+                module.out_proj.weight.data.normal_(mean=0.0, std=std * scale)
         # We initialize with 0s to be 1 centered as the RMSNorm here does (1 + weight)
         elif "RMSNorm" in module.__class__.__name__:
-            init.zeros_(module.weight)
+            module.weight.data.zero_()
 
     def _shift_right(self, input_ids):
         """

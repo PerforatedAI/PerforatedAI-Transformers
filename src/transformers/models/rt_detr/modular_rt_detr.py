@@ -2,7 +2,7 @@ import pathlib
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from transformers.models.detr.image_processing_detr_fast import DetrImageProcessorFast
 
@@ -25,7 +25,6 @@ from ...utils import (
     logging,
     requires_backends,
 )
-from .image_processing_rt_detr import RTDetrImageProcessorKwargs
 
 
 logger = logging.get_logger(__name__)

@@ -334,7 +334,7 @@ class XcodecPreTrainedModel(PreTrainedAudioTokenizerBase):
         if isinstance(module, nn.Linear):
             init.normal_(module.weight, mean=0.0, std=self.config.initializer_range)
             if module.bias is not None:
-                init.zeros_(module.bias)
+                module.bias.data.zero_()
         elif isinstance(module, (nn.LayerNorm, nn.GroupNorm)):
             init.zeros_(module.bias)
             init.ones_(module.weight)
@@ -342,29 +342,24 @@ class XcodecPreTrainedModel(PreTrainedAudioTokenizerBase):
             init.kaiming_normal_(module.weight)
             if module.bias is not None:
                 k = math.sqrt(module.groups / (module.in_channels * module.kernel_size[0]))
-                init.uniform_(module.bias, a=-k, b=k)
+                nn.init.uniform_(module.bias, a=-k, b=k)
         elif module.__class__.__name__ == "Snake1d":
-            init.ones_(module.alpha)
+            module.alpha.data.fill_(1.0)
         elif isinstance(module, nn.ConvTranspose1d):
             module.reset_parameters()
         elif isinstance(module, nn.Embedding):
-            init.normal_(module.weight, mean=0.0, std=0.02)
+            module.weight.data.normal_(mean=0.0, std=0.02)
         elif isinstance(module, XcodecModel):
             # The conv1d are not handled correctly, as `self.acoustic_encoder/decoder` are initialized from a PreTrainedModel,
             # but then only the submodules are used (which are not PreTrainedModels...) -> here we reinit them as in DacModel
             for submodule in module.acoustic_encoder.modules():
                 if isinstance(submodule, nn.Conv1d):
-                    init.trunc_normal_(submodule.weight, std=0.02)
-                    init.constant_(submodule.bias, 0)
+                    nn.init.trunc_normal_(submodule.weight, std=0.02)
+                    nn.init.constant_(submodule.bias, 0)
             for submodule in module.acoustic_decoder.modules():
                 if isinstance(submodule, nn.Conv1d):
-                    init.trunc_normal_(submodule.weight, std=0.02)
-                    init.constant_(submodule.bias, 0)
-        elif isinstance(module, XcodecEuclideanCodebook):
-            init.copy_(module.inited, torch.Tensor([True]))
-            init.zeros_(module.cluster_size)
-            init.zeros_(module.embed)
-            init.zeros_(module.embed_avg)
+                    nn.init.trunc_normal_(submodule.weight, std=0.02)
+                    nn.init.constant_(submodule.bias, 0)
 
     def apply_weight_norm(self):
         """Apply weight norm in the acoustic encoder and decoder because the original checkpoint has weight norm applied."""

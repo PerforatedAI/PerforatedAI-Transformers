@@ -1496,6 +1496,9 @@ Now that you have finetuned a model, evaluated it, and uploaded it to the Huggin
 Load model and image processor from the Hugging Face Hub (skip to use already trained in this session):
 
 ```py
+>>> from transformers import infer_device
+
+```py
 >>> from accelerate import Accelerator
 
 >>> device = Accelerator().device

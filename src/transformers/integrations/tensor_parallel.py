@@ -1245,7 +1245,7 @@ def add_tensor_parallel_hooks_to_module(
 
 def shard_and_distribute_module(
     model, param, empty_param, parameter_name, param_casting_dtype, is_contiguous, rank, device_mesh
-):
+):  # TODO: rename to shard_and_distribute_param
     r"""
     This function is called in `from_pretrained` when loading a model's checkpoints.
     It receives the pointer to the parameter (or the parameter itself) and takes care of "sharding".

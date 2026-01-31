@@ -291,4 +291,3 @@ alt="drawing" width="600"/>
 
 [[autodoc]] GotOcr2ForConditionalGeneration
     - forward
-    - get_image_features

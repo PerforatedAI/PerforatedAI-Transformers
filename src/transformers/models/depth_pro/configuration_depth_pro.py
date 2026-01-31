@@ -184,7 +184,7 @@ class DepthProConfig(PreTrainedConfig):
                     )
                     sub_config.update({"image_size": patch_size})
                 sub_config = CONFIG_MAPPING[sub_config["model_type"]](**sub_config)
-            elif isinstance(sub_config, PreTrainedConfig):
+            elif isinstance(sub_config, PretrainedConfig):
                 image_size = getattr(sub_config, "image_size", None)
                 if image_size != patch_size:
                     raise ValueError(

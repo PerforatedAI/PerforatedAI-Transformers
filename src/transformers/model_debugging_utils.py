@@ -224,7 +224,7 @@ def prune_intermediate_layers(node):
         prune_intermediate_layers(child)
 
 
-def log_model_debug_trace(debug_path: str | None, model):
+def log_model_debug_trace(debug_path: Optional[str], model):
     if debug_path:
         try:
             os.makedirs(debug_path, exist_ok=True)
@@ -398,7 +398,7 @@ def _attach_debugger_logic(
 @contextmanager
 def model_addition_debugger_context(
     model,
-    debug_path: str | None = None,
+    debug_path: Optional[str] = None,
     do_prune_layers: bool = True,
     use_repr: bool = True,
 ):

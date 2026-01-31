@@ -23,7 +23,8 @@ from transformers.testing_utils import (
     torch_device,
 )
 
-from ...causal_lm_tester import CausalLMModelTest, CausalLMModelTester
+from ...causal_lm_tester import CausalLMModelTest
+from ..gemma.test_modeling_gemma import GemmaModelTester
 
 
 if is_torch_available():
@@ -41,8 +42,20 @@ class HeliumModelTester(CausalLMModelTester):
 
 @require_torch
 class HeliumModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": HeliumModel,
+            "text-classification": HeliumForSequenceClassification,
+            "token-classification": HeliumForTokenClassification,
+            "text-generation": HeliumForCausalLM,
+            "zero-shot": HeliumForSequenceClassification,
+        }
+        if is_torch_available()
+        else {}
+    )
     _is_stateful = True
     model_split_percents = [0.5, 0.6]
+
     model_tester_class = HeliumModelTester
 
 

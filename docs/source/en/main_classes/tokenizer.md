@@ -49,7 +49,7 @@ several advanced alignment methods which can be used to map between the original
 token space (e.g., getting the index of the token comprising a given character or the span of characters corresponding
 to a given token).
 
-## Multimodal Tokenizer
+# Multimodal Tokenizer
 
 Apart from that each tokenizer can be a "multimodal" tokenizer which means that the tokenizer will hold all relevant special tokens
 as part of tokenizer attributes for easier access. For example, if the tokenizer is loaded from a vision-language model like LLaVA, you will

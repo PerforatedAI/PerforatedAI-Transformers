@@ -106,8 +106,6 @@ This example demonstrates how to perform inference on a single image with the In
 
 ### Text-only generation
 
-This example shows how to generate text using the InternVL model without providing any image input.
-
 ```python
 >>> from transformers import AutoProcessor, AutoModelForImageTextToText
 >>> import torch

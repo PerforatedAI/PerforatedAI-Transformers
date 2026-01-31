@@ -1,7 +1,24 @@
 import torch
 
 from ..generation.continuous_batching import PagedAttentionCache
-from ..modeling_flash_attention_utils import lazy_import_paged_flash_attention
+from ..utils import is_flash_attn_2_available
+
+
+# For some reason, if we dont assign the function to a variable here, it will be garbage collected
+try:
+    if is_flash_attn_2_available():
+        from flash_attn import flash_attn_varlen_func  # noqa: F401
+
+        FLASH_ATTN_VARLEN_FUNC = flash_attn_varlen_func
+    else:
+        raise RuntimeError(
+            "Flash Attention 2 is not installed. Please refer to https://huggingface.co/docs/transformers/perf_infer_gpu_one#flashattention-2 to install it"
+        )
+except Exception as e:
+    msg = repr(e)
+
+    def FLASH_ATTN_VARLEN_FUNC(*args, **kwargs):
+        raise Exception(f"flash_attn_varlen_func is not available: {msg}")
 
 
 def paged_attention_forward(
@@ -58,6 +75,11 @@ def paged_attention_forward(
     if isinstance(cu_seq_lens_k, dict):
         cu_seq_lens_k = cu_seq_lens_k[layer_type]
         max_seqlen_k = max_seqlen_k[layer_type]
+
+    if implementation is not None and hasattr(implementation, "flash_attn_varlen_func"):
+        flash_attn_varlen_func = implementation.flash_attn_varlen_func
+    else:
+        flash_attn_varlen_func = FLASH_ATTN_VARLEN_FUNC
 
     custom_kwargs = {"s_aux": kwargs.get("s_aux")} if "s_aux" in kwargs else {}
 

@@ -18,7 +18,7 @@
 # to defer the actual importing for when the objects are requested. This way `import transformers` provides the names
 # in the namespace without actually importing anything (and especially none of the backends).
 
-__version__ = "5.0.1.dev0"
+__version__ = "4.57.5"
 
 import importlib
 import sys
@@ -741,8 +741,6 @@ if TYPE_CHECKING:
     from .utils import is_torch_npu_available as is_torch_npu_available
     from .utils import is_torch_xla_available as is_torch_xla_available
     from .utils import is_torch_xpu_available as is_torch_xpu_available
-    from .utils.import_utils import requires_backends
-    from .utils.kernel_config import KernelConfig as KernelConfig
 
     # Quantization config
     from .utils.quantization_config import AqlmConfig as AqlmConfig

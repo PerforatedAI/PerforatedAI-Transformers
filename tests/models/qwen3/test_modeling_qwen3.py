@@ -18,7 +18,7 @@ import unittest
 import pytest
 from packaging import version
 
-from transformers import AutoTokenizer, BitsAndBytesConfig, is_torch_available, set_seed
+from transformers import AutoTokenizer, is_torch_available, set_seed
 from transformers.generation.configuration_utils import GenerationConfig
 from transformers.testing_utils import (
     Expectations,

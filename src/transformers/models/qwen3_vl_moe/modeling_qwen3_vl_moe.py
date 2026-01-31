@@ -43,14 +43,9 @@ from ...modeling_outputs import BaseModelOutputWithPast, BaseModelOutputWithPool
 from ...modeling_rope_utils import ROPE_INIT_FUNCTIONS, dynamic_rope_update
 from ...modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
 from ...processing_utils import Unpack
-from ...utils import (
-    TransformersKwargs,
-    auto_docstring,
-    can_return_tuple,
-    is_grouped_mm_available,
-    torch_compilable_check,
-)
-from ...utils.generic import OutputRecorder, check_model_inputs, is_flash_attention_requested, maybe_autocast
+from ...utils import TransformersKwargs, auto_docstring, is_torchdynamo_compiling
+from ...utils.deprecation import deprecate_kwarg
+from ...utils.generic import OutputRecorder, check_model_inputs
 from .configuration_qwen3_vl_moe import Qwen3VLMoeConfig, Qwen3VLMoeTextConfig, Qwen3VLMoeVisionConfig
 
 
@@ -75,7 +70,6 @@ class Qwen3VLMoeTextRMSNorm(nn.Module):
         return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
 
 
-@use_experts_implementation
 class Qwen3VLMoeTextExperts(nn.Module):
     """Collection of expert weights stored as 3D tensors."""
 
@@ -137,15 +131,28 @@ class Qwen3VLMoeTextTopKRouter(nn.Module):
 class Qwen3VLMoeTextSparseMoeBlock(nn.Module):
     def __init__(self, config: Qwen3VLMoeTextConfig):
         super().__init__()
+        self.hidden_size = config.hidden_size
+        self.num_experts = config.num_experts
+        self.top_k = config.num_experts_per_tok
+        self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
         self.experts = Qwen3VLMoeTextExperts(config)
         self.gate = Qwen3VLMoeTextTopKRouter(config)
 
-    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        batch_size, sequence_length, hidden_dim = hidden_states.shape
-        hidden_states_reshaped = hidden_states.view(-1, hidden_dim)
-        _, routing_weights, selected_experts = self.gate(hidden_states_reshaped)
-        final_hidden_states = self.experts(hidden_states_reshaped, selected_experts, routing_weights)
-        return final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
+        # since all the models use norm_topk_prob, we don't need to have a extra check for it
+        # self.norm_topk_prob = config.norm_topk_prob
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        batch_size = hidden_states.shape[0]
+        hidden_states = hidden_states.reshape(-1, self.hidden_size)
+        router_logits = self.gate(hidden_states)
+        routing_weights = torch.nn.functional.softmax(router_logits, dim=-1, dtype=torch.float)
+        routing_weights, router_indices = torch.topk(routing_weights, self.top_k, dim=-1)
+        routing_weights = routing_weights / routing_weights.sum(dim=-1, keepdim=True)
+        routing_weights = routing_weights.to(hidden_states.dtype)
+        router_weights = torch.zeros_like(router_logits).scatter_(1, router_indices, routing_weights)
+        hidden_states = hidden_states.reshape(batch_size, -1, self.hidden_size)
+        routed_out = self.experts(hidden_states, router_weights, router_indices)
+        return routed_out, router_logits
 
 
 def rotate_half(x):
@@ -1045,13 +1052,13 @@ class Qwen3VLMoeCausalLMOutputWithPast(ModelOutput):
         The rope index difference between sequence length and multimodal rope.
     """
 
-    loss: torch.FloatTensor | None = None
-    logits: torch.FloatTensor | None = None
-    past_key_values: Cache | None = None
-    hidden_states: tuple[torch.FloatTensor] | None = None
-    attentions: tuple[torch.FloatTensor] | None = None
-    rope_deltas: torch.LongTensor | None = None
-    aux_loss: torch.FloatTensor | None = None
+    loss: Optional[torch.FloatTensor] = None
+    logits: Optional[torch.FloatTensor] = None
+    past_key_values: Optional[Cache] = None
+    hidden_states: Optional[tuple[torch.FloatTensor]] = None
+    attentions: Optional[tuple[torch.FloatTensor]] = None
+    rope_deltas: Optional[torch.LongTensor] = None
+    aux_loss: Optional[torch.FloatTensor] = None
 
 
 @dataclass
@@ -1424,11 +1431,11 @@ class Qwen3VLMoeModel(Qwen3VLMoePreTrainedModel):
 
 
 def load_balancing_loss_func(
-    gate_logits: torch.Tensor | tuple[torch.Tensor] | None,
-    num_experts: int | None = None,
+    gate_logits: Union[torch.Tensor, tuple[torch.Tensor], None],
+    num_experts: Optional[int] = None,
     top_k=2,
-    attention_mask: torch.Tensor | None = None,
-) -> torch.Tensor | int:
+    attention_mask: Optional[torch.Tensor] = None,
+) -> Union[torch.Tensor, int]:
     r"""
     Computes auxiliary load balancing loss as in Switch Transformer - implemented in Pytorch.
 
@@ -1557,7 +1564,7 @@ class Qwen3VLMoeForConditionalGeneration(Qwen3VLMoePreTrainedModel, GenerationMi
         """
         return self.model.get_image_features(pixel_values=pixel_values, image_grid_thw=image_grid_thw, **kwargs)
 
-    @can_return_tuple
+    @check_model_inputs
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -1587,8 +1594,7 @@ class Qwen3VLMoeForConditionalGeneration(Qwen3VLMoePreTrainedModel, GenerationMi
         Example:
         ```python
         >>> from PIL import Image
-        >>> import httpx
-        >>> from io import BytesIO
+        >>> import requests
         >>> from transformers import AutoProcessor, Qwen3VLMoeForConditionalGeneration
 
         >>> model = Qwen3VLMoeForConditionalGeneration.from_pretrained("Qwen/Qwen3-VL-30B-A3B-Instruct", dtype="auto", device_map="auto")
@@ -1668,8 +1674,6 @@ class Qwen3VLMoeForConditionalGeneration(Qwen3VLMoePreTrainedModel, GenerationMi
             aux_loss=aux_loss,
             logits=logits,
             past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
             rope_deltas=outputs.rope_deltas,
         )
 

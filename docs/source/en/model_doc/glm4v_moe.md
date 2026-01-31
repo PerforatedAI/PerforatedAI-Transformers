@@ -43,7 +43,13 @@ https URL. Code, models and more information are released at https://github.com/
 
 ## Support Model
 
-This Model type support these model of zai-org:
+Beyond benchmark performance, GLM-4.5V focuses on real-world usability. Through efficient hybrid training, it can handle diverse types of visual content, enabling full-spectrum vision reasoning, including:
+
+- **Image reasoning** (scene understanding, complex multi-image analysis, spatial recognition)
+- **Video understanding** (long video segmentation and event recognition)
+- **GUI tasks** (screen reading, icon recognition, desktop operation assistance)
+- **Complex chart & long document parsing** (research report analysis, information extraction)
+- **Grounding** (precise visual element localization)
 
 + [GLM-4.5V](https://huggingface.co/zai-org/GLM-4.5V)
 + [GLM-4.6V](https://huggingface.co/zai-org/GLM-4.6V)

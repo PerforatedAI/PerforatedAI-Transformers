@@ -485,7 +485,7 @@ class IdeficsAttention(nn.Module):
         num_heads: int,
         dropout: float = 0.0,
         is_cross_attention: bool = False,
-        config: PreTrainedConfig | None = None,
+        config: Optional[PretrainedConfig] = None,
         qk_layer_norms: bool = False,
         layer_idx: int | None = None,
     ):

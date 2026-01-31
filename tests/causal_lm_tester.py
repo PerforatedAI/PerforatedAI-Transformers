@@ -18,7 +18,7 @@ from inspect import signature
 import pytest
 from parameterized import parameterized
 
-from transformers import AutoModelForCausalLM, PreTrainedConfig, set_seed
+from transformers import AutoModelForCausalLM, PretrainedConfig, set_seed
 from transformers.models.auto.auto_factory import getattribute_from_module
 from transformers.testing_utils import (
     _COMMON_MODEL_NAMES_MAP,
@@ -88,7 +88,7 @@ class CausalLMModelTester:
                     pass
             else:
                 if tester_attribute_name == "config_class":
-                    if "PreTrainedConfig" not in str(getattr(cls, tester_attribute_name).__mro__):
+                    if "PretrainedConfig" not in str(getattr(cls, tester_attribute_name).__mro__):
                         raise ValueError(
                             f"You have inherited from `CausalLMModelTester` but did not set the "
                             f"`{tester_attribute_name}` attribute to a valid config class. (It's set to "
@@ -649,7 +649,8 @@ def _config_supports_rope_scaling(config: PreTrainedConfig) -> bool:
     # Has rope_theta (and no rope_scaling) -> probably an older model, but should support rope scaling as well
     main_config_has_rope = hasattr(config, "rope_parameters")
     sub_config_has_rope = any(
-        hasattr(getattr(config, sub_config), "rope_parameters") for sub_config in config.sub_configs.keys()
+        hasattr(getattr(config, sub_config), "rope_scaling") or hasattr(getattr(config, sub_config), "rope_theta")
+        for sub_config in config.sub_configs.keys()
     )
     return main_config_has_rope or sub_config_has_rope
 

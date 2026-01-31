@@ -11,7 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import TYPE_CHECKING
+import importlib
+from typing import TYPE_CHECKING, Optional, Union
+
+from packaging import version
 
 from .base import HfQuantizer
 from .quantizers_utils import get_module_from_name
@@ -61,22 +64,42 @@ class QuantoHfQuantizer(HfQuantizer):
             raise ImportError(
                 "Loading an optimum-quanto quantized model requires accelerate library (`pip install accelerate`)"
             )
-        device_map = kwargs.get("device_map")
-        if isinstance(device_map, dict):
-            if len(device_map) > 1 and "cpu" in device_map.values() or "disk" in device_map.values():
-                raise ValueError(
-                    "You are attempting to load an model with a device_map that contains a CPU or disk device."
-                    "This is not supported with quanto when the model is quantized on the fly. "
-                    "Please remove the CPU or disk device from the device_map."
-                )
-        if self.quantization_config.activations is not None:
-            raise ValueError(
-                "We don't support quantizing the activations with transformers library."
-                "Use quanto library for more complex use cases such as activations quantization, calibration and quantization aware training."
+
+    def update_device_map(self, device_map):
+        if device_map is None:
+            device_map = {"": "cpu"}
+            logger.info(
+                "The device_map was not initialized. "
+                "Setting device_map to {'':'cpu'}. "
+                "If you want to use the model for inference, please set device_map ='auto'"
             )
+        return device_map
+
+    def update_dtype(self, dtype: "torch.dtype") -> "torch.dtype":
+        if dtype is None:
+            logger.info("You did not specify `dtype` in `from_pretrained`. Setting it to `torch.float32`.")
+            dtype = torch.float32
+        return dtype
+
+    def update_missing_keys(self, model, missing_keys: list[str], prefix: str) -> list[str]:
+        if is_optimum_quanto_available():
+            from optimum.quanto import QModuleMixin
+
+        not_missing_keys = []
+        for name, module in model.named_modules():
+            if isinstance(module, QModuleMixin):
+                for missing in missing_keys:
+                    if (
+                        (name in missing or name in f"{prefix}.{missing}")
+                        and not missing.endswith(".weight")
+                        and not missing.endswith(".bias")
+                    ):
+                        not_missing_keys.append(missing)
+        return [k for k in missing_keys if k not in not_missing_keys]
 
     def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
-        from optimum.quanto import QModuleMixin
+        if is_optimum_quanto_available():
+            from optimum.quanto import QModuleMixin
 
         module, tensor_name = get_module_from_name(model, param_name)
         # We only quantize the weights and the bias is not quantized.
@@ -90,12 +113,20 @@ class QuantoHfQuantizer(HfQuantizer):
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
 
-    def param_element_size(self, model: "PreTrainedModel", param_name: str, param: "torch.Tensor") -> float:
-        "Return the element size (in bytes) for `param_name`."
-        if self.param_needs_quantization(model, param_name) and self.quantized_param_size is not None:
-            return self.quantized_param_size
+    def create_quantized_param(
+        self,
+        model: "PreTrainedModel",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        **kwargs,
+    ):
+        from ..modeling_utils import _load_parameter_into_model
 
-        return super().param_element_size(model, param_name, param)
+        _load_parameter_into_model(model, param_name, param_value.to(target_device))
+        module, _ = get_module_from_name(model, param_name)
+        module.freeze()
+        module.weight.requires_grad = False
 
     def _process_model_before_weight_loading(self, model: "PreTrainedModel", **kwargs):
         from ..integrations import replace_with_quanto_layers

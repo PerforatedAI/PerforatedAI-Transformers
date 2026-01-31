@@ -16,7 +16,7 @@
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import (
@@ -36,7 +36,16 @@ from ...utils import (
     TensorType,
     auto_docstring,
 )
-from .image_processing_janus import JanusImageProcessorKwargs
+
+
+class JanusFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    r"""
+    min_size (`int`, *optional*, defaults to 14):
+        The minimum allowed size for the resized image. Ensures that neither the height nor width
+        falls below this value after resizing.
+    """
+
+    min_size: int
 
 
 @auto_docstring

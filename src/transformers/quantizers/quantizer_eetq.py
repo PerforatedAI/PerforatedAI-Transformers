@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from .base import HfQuantizer
 
@@ -69,7 +69,7 @@ class EetqHfQuantizer(HfQuantizer):
         return dtype
 
     def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
-        from ..integrations.eetq import EetqLinear
+        from eetq import EetqLinear
 
         module, tensor_name = get_module_from_name(model, param_name)
 
@@ -79,6 +79,34 @@ class EetqHfQuantizer(HfQuantizer):
             else:
                 return True
         return False
+
+    def create_quantized_param(
+        self,
+        model: "PreTrainedModel",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        **kwargs,
+    ):
+        from eetq import EetqLinear, quantize_and_preprocess_weights
+
+        module, tensor_name = get_module_from_name(model, param_name)
+        new_value, weight_scale = quantize_and_preprocess_weights(param_value)
+
+        # Samity check
+        if isinstance(module, EetqLinear):
+            if self.pre_quantized or tensor_name == "bias":
+                if tensor_name == "weight" and param_value.dtype != torch.int8:
+                    raise ValueError("Expect quantized weights but got an unquantized weight")
+            else:
+                if tensor_name == "weight_scale":
+                    raise ValueError("Expect unquantized weights but got a quantized weight_scale")
+
+        module._buffers[tensor_name] = new_value.to(target_device)
+        module.register("weight_scales", weight_scale.to(target_device))
+
+    def _process_model_after_weight_loading(self, model: "PreTrainedModel", **kwargs):
+        return model
 
     def _process_model_before_weight_loading(
         self,

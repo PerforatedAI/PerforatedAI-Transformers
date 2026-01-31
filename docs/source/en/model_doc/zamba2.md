@@ -69,8 +69,6 @@ The model cards can be found at:
 
 ## Issues
 
-For issues with model output, or community discussion, please use the Hugging Face community [forum](https://huggingface.co/Zyphra/Zamba2-7B/discussions)
-
 ## License
 
 The model weights are open-sourced via an Apache 2.0 license.

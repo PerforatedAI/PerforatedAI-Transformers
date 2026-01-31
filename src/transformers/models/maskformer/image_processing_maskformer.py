@@ -282,8 +282,8 @@ def compute_segments(
 # TODO: (Amy) Move to image_transforms
 def convert_segmentation_map_to_binary_masks(
     segmentation_map: np.ndarray,
-    instance_id_to_semantic_id: dict[int, int] | None = None,
-    ignore_index: int | None = None,
+    instance_id_to_semantic_id: Optional[dict[int, int]] = None,
+    ignore_index: Optional[int] = None,
     do_reduce_labels: bool = False,
 ):
     if do_reduce_labels and ignore_index is None:
@@ -560,8 +560,8 @@ class MaskFormerImageProcessor(BaseImageProcessor):
     def convert_segmentation_map_to_binary_masks(
         self,
         segmentation_map: np.ndarray,
-        instance_id_to_semantic_id: dict[int, int] | None = None,
-        ignore_index: int | None = None,
+        instance_id_to_semantic_id: Optional[dict[int, int]] = None,
+        ignore_index: Optional[int] = None,
         do_reduce_labels: bool = False,
     ):
         do_reduce_labels = do_reduce_labels if do_reduce_labels is not None else self.do_reduce_labels

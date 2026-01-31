@@ -21,7 +21,7 @@
 from typing import Optional, Union
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import BaseImageProcessorFast, group_images_by_shape, reorder_images
@@ -36,7 +36,17 @@ from ...image_utils import (
 )
 from ...processing_utils import Unpack
 from ...utils import TensorType, auto_docstring
-from .image_processing_segformer import SegformerImageProcessorKwargs
+
+
+class SegformerFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    r"""
+    do_reduce_labels (`bool`, *optional*, defaults to `self.do_reduce_labels`):
+        Whether or not to reduce all label values of segmentation maps by 1. Usually used for datasets where 0
+        is used for background, and background itself is not included in all classes of a dataset (e.g.
+        ADE20k). The background label will be replaced by 255.
+    """
+
+    do_reduce_labels: Optional[bool]
 
 
 @auto_docstring
@@ -114,7 +124,7 @@ class SegformerImageProcessorFast(BaseImageProcessorFast):
                     "do_normalize": False,
                     "do_rescale": False,
                     # Nearest interpolation is used for segmentation maps instead of BILINEAR.
-                    "interpolation": tvF.InterpolationMode.NEAREST_EXACT,
+                    "interpolation": F.InterpolationMode.NEAREST_EXACT,
                 }
             )
             processed_segmentation_maps = self._preprocess(

@@ -71,7 +71,20 @@ class QuarkHfQuantizer(HfQuantizer):
     def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
         return True
 
-    def is_serializable(self):
+    def create_quantized_param(self, model, param, param_name, param_device, **kwargs):
+        from ..modeling_utils import _load_parameter_into_model
+
+        postfix = param_name.split(".")[-1]
+
+        if postfix in CHECKPOINT_KEYS:
+            param_name = param_name.replace(postfix, CHECKPOINT_KEYS[postfix])
+
+        _load_parameter_into_model(model, param_name, param.to(param_device))
+
+    def _process_model_after_weight_loading(self, model: "PreTrainedModel", **kwargs):
+        return model
+
+    def is_serializable(self, safe_serialization=None):
         return False
 
     @property

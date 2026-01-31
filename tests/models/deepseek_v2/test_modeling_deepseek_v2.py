@@ -15,8 +15,10 @@
 
 import unittest
 
+import pytest
+
 from transformers import BitsAndBytesConfig, Cache, is_torch_available
-from transformers.testing_utils import require_torch, require_torch_accelerator, slow, torch_device
+from transformers.testing_utils import require_read_token, require_torch, require_torch_accelerator, slow, torch_device
 
 from ...causal_lm_tester import CausalLMModelTest, CausalLMModelTester
 
@@ -51,6 +53,18 @@ class DeepseekV2ModelTester(CausalLMModelTester):
 
 @require_torch
 class DeepseekV2ModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": DeepseekV2Model,
+            "text-classification": DeepseekV2ForSequenceClassification,
+            "text-generation": DeepseekV2ForCausalLM,
+            "zero-shot": DeepseekV2ForSequenceClassification,
+        }
+        if is_torch_available()
+        else {}
+    )
+    fx_compatible = False
+    test_torchscript = False
     test_all_params_have_gradient = False
     model_tester_class = DeepseekV2ModelTester
     model_split_percents = [0.5, 0.7, 0.8]

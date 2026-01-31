@@ -38,7 +38,7 @@ from ...image_utils import (
     SizeDict,
     pil_torch_interpolation_mapping,
 )
-from ...processing_utils import ImagesKwargs, Unpack
+from ...processing_utils import Unpack
 from ...utils import TensorType, auto_docstring
 
 

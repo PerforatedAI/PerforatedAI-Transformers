@@ -30,6 +30,7 @@ from transformers import (
     Gemma3nAudioConfig,
     Gemma3nAudioFeatureExtractor,
     Gemma3nConfig,
+    GenerationConfig,
     StaticCache,
     is_torch_available,
 )
@@ -37,6 +38,7 @@ from transformers.testing_utils import (
     Expectations,
     cleanup,
     require_deterministic_for_xpu,
+    require_read_token,
     require_torch,
     require_torch_accelerator,
     set_config_for_less_flaky_test,
@@ -320,6 +322,14 @@ class Gemma3nTextModelTester(CausalLMModelTester):
 @require_torch
 class Gemma3nTextModelTest(CausalLMModelTest, unittest.TestCase):
     model_tester_class = Gemma3nTextModelTester
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": Gemma3nTextModel,
+            "text-generation": Gemma3nForCausalLM,
+        }
+        if is_torch_available()
+        else {}
+    )
     _is_stateful = True
     model_split_percents = [0.5, 0.6]
 
@@ -767,6 +777,18 @@ class Gemma3nVision2TextModelTest(ModelTesterMixin, GenerationTesterMixin, unitt
             text_config={"activation_sparsity_pattern": None},
         )
 
+    @unittest.skip(reason="SiglipVisionModel (vision backbone) does not support standalone training")
+    def test_training_gradient_checkpointing(self):
+        pass
+
+    @unittest.skip(reason="SiglipVisionModel (vision backbone) does not support standalone training")
+    def test_training_gradient_checkpointing_use_reentrant(self):
+        pass
+
+    @unittest.skip(reason="SiglipVisionModel (vision backbone) does not support standalone training")
+    def test_training_gradient_checkpointing_use_reentrant_false(self):
+        pass
+
     @unittest.skip(
         reason="Siglip has no FLEX attention, and we don't have a proper way to set/test attn in VLMs. TODO @raushan"
     )
@@ -796,6 +818,7 @@ class Gemma3nVision2TextModelTest(ModelTesterMixin, GenerationTesterMixin, unitt
 
 @slow
 @require_torch_accelerator
+@require_read_token
 class Gemma3nIntegrationTest(unittest.TestCase):
     def setUp(self):
         self.processor = AutoProcessor.from_pretrained("Google/gemma-3n-E4B-it", padding_side="left")
@@ -815,7 +838,7 @@ class Gemma3nIntegrationTest(unittest.TestCase):
         audio_ds = load_dataset(
             "etechgrid/28.5k_wavfiles_dataset", "default", data_files="wav_dataset/103-1240-0000.wav"
         )
-        self.audio_file_path = audio_ds["train"][0]["audio"].metadata.path
+        self.audio_file_path = audio_ds["train"][0]["audio"]["path"]
         cleanup(torch_device, gc_collect=True)
 
     def tearDown(self):
@@ -1070,6 +1093,6 @@ class Gemma3nIntegrationTest(unittest.TestCase):
             # FIXME: This test is VERY flaky on ROCm
             ("cuda", None): [" and I am glad to be here. This is a nice place. This is a nice place.", ", green, yellow, purple, orange, pink, brown, black, white.\n\nHere are"],
             ("rocm", (9, 4)): [' and I think it makes this place special. This is a nice place. This is a nice place', ', green, yellow, purple, orange, pink, brown, black, white.\n\nHere are'],
-            ("xpu", None): [" and I think it's a nice place to visit. This is a nice place. This is", ", green, yellow, orange, purple, pink, brown, black, white.\n\nHere'"],
+            ("xpu", None): [" and I think it is very nice. I think it is nice. This is a nice place.", ", green, yellow, purple, orange, pink, brown, black, white.\n\nHere are"],
         }).get_expectation()  # fmt: skip
         self.assertEqual(output_text, EXPECTED_COMPLETIONS)

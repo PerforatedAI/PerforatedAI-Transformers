@@ -365,7 +365,7 @@ class CodeGenModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMi
         model.config.pad_token_id = model.config.eos_token_id
 
         # use different length sentences to test batching
-        sentences = ["def greetings(name):", "def hello_world():"]
+        sentences = ["def hello_world():", "def greet(name):"]
 
         inputs = tokenizer(sentences, return_tensors="pt", padding=True)
         input_ids = inputs["input_ids"].to(torch_device)
@@ -402,8 +402,8 @@ class CodeGenModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMi
         padded_sentence = tokenizer.decode(output_padded[0], skip_special_tokens=True)
 
         expected_output_sentence = [
-            'def greetings(name):\n    print(f"Hello {name}")\n\n',
-            'def hello_world():\n    print("Hello World")\n\nhello_world()',
+            'def hello_world():\n    print("Hello World")\n\nhellow_world()',
+            'def greet(name):\n    print(f"Hello {name}")\n\ng',
         ]
         self.assertListEqual(expected_output_sentence, batch_out_sentence)
         self.assertTrue(batch_out_sentence_tt != batch_out_sentence)  # token_type_ids should change output

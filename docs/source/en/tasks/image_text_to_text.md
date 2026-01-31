@@ -66,7 +66,17 @@ The image inputs look like the following.
      <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/bee.jpg" alt="A bee on a pink flower"/>
 </div>
 
-Structure your conversation as shown below for a single prompt with image and text inputs.
+```python
+from PIL import Image
+import requests
+
+img_urls =["https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png",
+           "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/bee.jpg"]
+images = [Image.open(requests.get(img_urls[0], stream=True).raw),
+          Image.open(requests.get(img_urls[1], stream=True).raw)]
+```
+
+Below is an example of the chat template. We can feed conversation turns and the last message as an input by appending it at the end of the template.
 
 ```python
 messages = [

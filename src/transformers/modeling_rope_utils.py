@@ -129,6 +129,49 @@ def dynamic_rope_update(rope_forward):
     return wrapper
 
 
+def _compute_default_rope_parameters(
+    config: Optional[PretrainedConfig] = None,
+    device: Optional["torch.device"] = None,
+    seq_len: Optional[int] = None,
+) -> tuple["torch.Tensor", float]:
+    """
+    Computes the inverse frequencies according to the original RoPE implementation
+    Args:
+        config ([`~transformers.PretrainedConfig`]):
+            The model configuration. This function assumes that the config will provide at least the following
+            properties:
+
+            *   rope_theta (`float`): The base wavelength from which the inverse frequencies will be derived.
+            *   hidden_size (`int`): The numerator when deriving a head_dim, if not provided directly.
+            *   num_attention_heads (`int`): The denominator when deriving a head_dim, if not provided directly.
+
+            Additionally, this function will make use of the following properties if they are found in the config:
+
+            *   head_dim (`int`, *optional*): The size of the key-value heads in the model. If None, this value will be
+                derived as hidden_size // num_attention_heads.
+            *   partial_rotary_factor (`float`, *optional*): If less than 1.0, inverse frequencies will be returned for
+                the first fraction of the head_dim. Defaults to 1.0.
+        device (`torch.device`):
+            The device to use for initialization of the inverse frequencies.
+        seq_len (`int`, *optional*):
+            The current sequence length. Unused for this type of RoPE.
+
+    Returns:
+        Tuple of (`torch.Tensor`, `float`), containing the inverse frequencies for the RoPE embeddings and the
+        post-processing scaling factor applied to the computed cos/sin (unused in this type of RoPE).
+    """
+    base = config.rope_theta
+    partial_rotary_factor = getattr(config, "partial_rotary_factor", 1.0)
+    head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
+    dim = int(head_dim * partial_rotary_factor)
+
+    attention_factor = 1.0  # Unused in this type of RoPE
+
+    # Compute the inverse frequencies
+    inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim))
+    return inv_freq, attention_factor
+
+
 def _compute_linear_scaling_rope_parameters(
     config: Optional["PreTrainedConfig"] = None,
     device: Optional["torch.device"] = None,
@@ -138,7 +181,7 @@ def _compute_linear_scaling_rope_parameters(
     """
     Computes the inverse frequencies with linear scaling. Credits to the Reddit user /u/kaiokendev
     Args:
-        config ([`~transformers."PreTrainedConfig"`]):
+        config ([`~transformers.PretrainedConfig`]):
             The model configuration. This function assumes that the config will provide at least the following
             properties:
 
@@ -193,7 +236,7 @@ def _compute_dynamic_ntk_parameters(
     Computes the inverse frequencies with NTK scaling. Credits to the Reddit users /u/bloc97 and /u/emozilla
 
     Args:
-        config ([`~transformers."PreTrainedConfig"`]):
+        config ([`~transformers.PretrainedConfig`]):
             The model configuration. This function assumes that the config will provide at least the following
             properties:
 
@@ -202,7 +245,7 @@ def _compute_dynamic_ntk_parameters(
             *   num_attention_heads (`int`): The denominator when deriving a head_dim, if not provided directly.
             *   max_position_embeddings (`int`): The default sequence length used to update the dynamic RoPE at
                 inference time
-            *   rope_parameters (`dict[str, float]`): The standard RoPE scaling parameters, from which `factor`
+            *   rope_scaling (`dict[str, float]`): The standard RoPE scaling parameters, from which `factor`
                 will be accessed. The value of `factor` is used to determine the new base frequency, along with the
                 current sequence length (seq_len), the maximum positional embeddings (max_position_embeddings), and the
                 computed dimensionality (dim) of the rotary embeddings. If seq_len <= max_position_embeddings, this
@@ -225,12 +268,9 @@ def _compute_dynamic_ntk_parameters(
         Tuple of (`torch.Tensor`, `float`), containing the inverse frequencies for the RoPE embeddings and the
         post-processing scaling factor applied to the computed cos/sin (unused in this type of RoPE).
     """
-    # For backward compatibility standardize the `rope_parameters_dict` if it uses old format
-    config.standardize_rope_params()
-    rope_parameters_dict = config.rope_parameters[layer_type] if layer_type is not None else config.rope_parameters
-
-    base = rope_parameters_dict["rope_theta"]
-    partial_rotary_factor = rope_parameters_dict.get("partial_rotary_factor", 1.0)
+    # TODO (joao): use the new `original_max_position_embeddings` from rope_scaling
+    base = config.rope_theta
+    partial_rotary_factor = getattr(config, "partial_rotary_factor", 1.0)
     head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
     dim = int(head_dim * partial_rotary_factor)
     factor = rope_parameters_dict["factor"]
@@ -264,7 +304,7 @@ def _compute_yarn_parameters(
     [original paper](https://huggingface.co/papers/2309.00071)
 
     Args:
-        config ([`~transformers."PreTrainedConfig"`]):
+        config ([`~transformers.PretrainedConfig`]):
             The model configuration. This function assumes that the config will provide at least the following
             properties:
 
@@ -272,7 +312,7 @@ def _compute_yarn_parameters(
             *   hidden_size (`int`): The numerator when deriving a head_dim, if not provided directly.
             *   num_attention_heads (`int`): The denominator when deriving a head_dim, if not provided directly.
             *   max_position_embeddings (`int`): The maximum length of the positional embeddings.
-            *   rope_parameters (`dict[str, float | int]`): The standard RoPE scaling parameters, from which the following
+            *   rope_scaling (`dict[str, float | int]`): The standard RoPE scaling parameters, from which the following
                 keys will be accessed:
                 *   `attention_factor` (`float`, *optional*): The scaling factor to be applied to the computed cos/sin.
                     If None, the value is inferred from `factor`, `mscale`, and `mscale_all_dim` as avaialble.
@@ -292,7 +332,8 @@ def _compute_yarn_parameters(
                     `mscale_all_dim` are provided, `mscale_all_dim` acts scalar augmenting `log(factor)` when computing
                     the denominator for the inferred value of `attention_factor`. If not provided, `attention_factor`
                     will be calculated based on `factor` only.
-                *   `original_max_position_embeddings` (`int`): The original max position embeddings used during pretraining.
+                *   `original_max_position_embeddings` (`int`, *optional*): The original max position embeddings used
+                    during pretraining. If not provided, the function falls back to `max_position_embeddings`.
                 *   `truncate` (`bool`, *optional*): Whether to truncate the correction range.
 
             Additionally, this function will make use of the following properties if they are found in the config:
@@ -314,8 +355,8 @@ def _compute_yarn_parameters(
     config.standardize_rope_params()
     rope_parameters_dict = config.rope_parameters[layer_type] if layer_type is not None else config.rope_parameters
 
-    base = rope_parameters_dict["rope_theta"]
-    partial_rotary_factor = rope_parameters_dict.get("partial_rotary_factor", 1.0)
+    base = config.rope_theta
+    partial_rotary_factor = getattr(config, "partial_rotary_factor", 1.0)
     head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
     dim = int(head_dim * partial_rotary_factor)
 
@@ -344,9 +385,9 @@ def _compute_yarn_parameters(
             attention_factor = get_mscale(factor)
 
     # Optional config options
-    # beta_fast/beta_slow: as suggested in the paper, default to 32/1 (correspondingly)
-    beta_fast = rope_parameters_dict.get("beta_fast") or 32
-    beta_slow = rope_parameters_dict.get("beta_slow") or 1
+    # beta_fast/beta_slow: as suggested in the paper, default to 32 and 1 respectively
+    beta_fast = config.rope_scaling.get("beta_fast") or 32
+    beta_slow = config.rope_scaling.get("beta_slow") or 1
 
     # Compute the inverse frequencies
     def find_correction_dim(num_rotations, dim, base, max_position_embeddings):
@@ -399,7 +440,7 @@ def _compute_longrope_parameters(
     [original implementation](https://github.com/microsoft/LongRoPE)
 
     Args:
-        config ([`~transformers."PreTrainedConfig"`]):
+        config ([`~transformers.PretrainedConfig`]):
             The model configuration. This function assumes that the config will provide at least the following
             properties:
 
@@ -409,7 +450,7 @@ def _compute_longrope_parameters(
             *   max_position_embeddings (`int`): The maximum length of the positional embeddings.
             *   original_max_position_embeddings (`int`, *optional*): The original max position embeddings used during
                 pretraining. If not provided, defaults to `max_position_embeddings`.
-            *   rope_parameters (`dict[str, float]`): The standard RoPE scaling parameters, from which the following keys
+            *   rope_scaling (`dict[str, float]`): The standard RoPE scaling parameters, from which the following keys
                 will be accessed:
                 *   `attention_factor` (`float`, *optional*): The scaling factor to be applied on the attention
                     computation. If unspecified, it defaults to value recommended by the implementation, inferred from
@@ -437,12 +478,9 @@ def _compute_longrope_parameters(
         Tuple of (`torch.Tensor`, `float`), containing the inverse frequencies for the RoPE embeddings and the
         post-processing scaling factor applied to the computed cos/sin.
     """
-    # For backward compatibility standardize the `rope_parameters_dict` if it uses old format
-    config.standardize_rope_params()
-    rope_parameters_dict = config.rope_parameters[layer_type] if layer_type is not None else config.rope_parameters
-
-    base = rope_parameters_dict["rope_theta"]
-    partial_rotary_factor = rope_parameters_dict.get("partial_rotary_factor", 1.0)
+    # TODO (joao): use the new `original_max_position_embeddings` from rope_scaling
+    base = config.rope_theta
+    partial_rotary_factor = getattr(config, "partial_rotary_factor", 1.0)
     head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
     dim = int(head_dim * partial_rotary_factor)
 
@@ -455,8 +493,10 @@ def _compute_longrope_parameters(
     # NOTE: Phi3 (and potentially other models) modify `max_position_embeddings` and have a
     # `original_max_position_embeddings` field containing the pretrained value. They use the ratio between these two
     # values to compute the default attention scaling factor, instead of using `factor`.
-    if factor is None:
+    if original_max_position_embeddings := getattr(config, "original_max_position_embeddings", None):
         factor = config.max_position_embeddings / original_max_position_embeddings
+    else:
+        original_max_position_embeddings = config.max_position_embeddings
 
     # Sets the attention factor as suggested in the paper
     if attention_factor is None:
@@ -486,14 +526,14 @@ def _compute_llama3_parameters(
     Computes the inverse frequencies for llama 3.1.
 
     Args:
-        config ([`~transformers."PreTrainedConfig"`]):
+        config ([`~transformers.PretrainedConfig`]):
             The model configuration. This function assumes that the config will provide at least the following
             properties:
 
             *   rope_theta (`float`): The base wavelength from which the inverse frequencies will be derived.
             *   hidden_size (`int`): The numerator when deriving a head_dim, if not provided directly.
             *   num_attention_heads (`int`): The denominator when deriving a head_dim, if not provided directly.
-            *   rope_parameters (`dict[str, float | int]`): The standard RoPE scaling parameters, from which the following
+            *   rope_scaling (`dict[str, float | int]`): The standard RoPE scaling parameters, from which the following
                 keys will be accessed:
                 *   `factor` (`float`, *optional*): The scaling factor applied to the inverse frequencies when 1) the
                     wavelength is greater than `low_freq_wavelen` prior to smoothing, and 2) to all inverse frequencies
@@ -713,9 +753,42 @@ class RotaryEmbeddingConfigMixin:
             validation_fn = getattr(self, f"_validate_{rope_type}_rope_parameters", None)
             rope_parameters["rope_type"] = rope_type
 
-            if validation_fn is not None:
-                validation_fn(rope_parameters, ignore_keys=ignore_keys)
-            else:
+    partial_rotary_factor = getattr(config, "partial_rotary_factor", 1.0)
+    head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
+    dim = int(head_dim * partial_rotary_factor)
+
+    short_factor = rope_scaling.get("short_factor")
+    if not isinstance(short_factor, list) and all(isinstance(x, (int, float)) for x in short_factor):
+        logger.warning(f"`rope_scaling`'s short_factor field must be a list of numbers, got {short_factor}")
+    if len(short_factor) != dim // 2:
+        logger.warning(f"`rope_scaling`'s short_factor field must have length {dim // 2}, got {len(short_factor)}")
+
+    long_factor = rope_scaling.get("long_factor")
+    if not isinstance(long_factor, list) and all(isinstance(x, (int, float)) for x in long_factor):
+        logger.warning(f"`rope_scaling`'s long_factor field must be a list of numbers, got {long_factor}")
+    if len(long_factor) != dim // 2:
+        logger.warning(f"`rope_scaling`'s long_factor field must have length {dim // 2}, got {len(long_factor)}")
+
+    # Handle Phi3 divergence: prefer the use of `attention_factor` and/or `factor` over
+    # `original_max_position_embeddings` to compute internal variables. The latter lives outside `rope_scaling` and is
+    # unique to longrope (= undesirable)
+    if hasattr(config, "original_max_position_embeddings"):
+        logger.warning_once(
+            "This model has set a `original_max_position_embeddings` field, to be used together with "
+            "`max_position_embeddings` to determine a scaling factor. Please set the `factor` field of `rope_scaling`"
+            "with this ratio instead -- we recommend the use of this field over `original_max_position_embeddings`, "
+            "as it is compatible with most model architectures."
+        )
+    else:
+        factor = rope_scaling.get("factor")
+        if factor is None:
+            logger.warning("Missing required keys in `rope_scaling`: 'factor'")
+        elif not isinstance(factor, float) or factor < 1.0:
+            logger.warning(f"`rope_scaling`'s factor field must be a float >= 1, got {factor}")
+
+        attention_factor = rope_scaling.get("attention_factor")
+        if attention_factor is not None:
+            if not isinstance(attention_factor, float) or attention_factor < 0.0:
                 logger.warning(
                     f"Missing validation function in 'RotaryEmbeddingConfigMixin' for 'rope_type'='{rope_type}'"
                 )

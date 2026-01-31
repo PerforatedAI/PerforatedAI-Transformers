@@ -23,6 +23,7 @@ import torch
 import torchvision.transforms.v2.functional as tvF
 from torch.nn import functional as F
 from torchvision.ops.boxes import batched_nms
+from torchvision.transforms.v2 import functional as F_t
 
 from ...image_processing_utils import BatchFeature, get_size_dict
 from ...image_processing_utils_fast import BaseImageProcessorFast
@@ -40,11 +41,20 @@ from ...image_utils import (
     pil_torch_interpolation_mapping,
 )
 from ...processing_utils import Unpack
-from ...utils import (
-    TensorType,
-    auto_docstring,
-)
-from .image_processing_sam import SamImageProcessorKwargs
+from ...utils import auto_docstring
+
+
+class SamFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    r"""
+    mask_size (`dict[str, int]`, *optional*):
+        The size `{"longest_edge": int}` to resize the segmentation maps to.
+    mask_pad_size (`dict[str, int]`, *optional*):
+        The size `{"height": int, "width": int}` to pad the segmentation maps to. Must be larger than any segmentation
+        map size provided for preprocessing.
+    """
+
+    mask_size: Optional[dict[str, int]]
+    mask_pad_size: Optional[dict[str, int]]
 
 
 @auto_docstring
@@ -208,7 +218,7 @@ class SamImageProcessorFast(BaseImageProcessorFast):
                 {
                     "do_normalize": False,
                     "do_rescale": False,
-                    "interpolation": tvF.InterpolationMode.NEAREST_EXACT,
+                    "interpolation": F_t.InterpolationMode.NEAREST_EXACT,
                     "size": segmentation_maps_kwargs.pop("mask_size"),
                     "pad_size": segmentation_maps_kwargs.pop("mask_pad_size"),
                 }

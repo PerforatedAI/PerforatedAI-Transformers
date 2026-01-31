@@ -17,7 +17,7 @@ from typing import Optional, Union
 
 import torch
 import torch.nn as nn
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ... import initialization as init
 from ...cache_utils import Cache

@@ -18,7 +18,7 @@ from typing import Optional, Union
 
 import numpy as np
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import (
@@ -48,19 +48,19 @@ from .image_processing_eomt import (
 )
 
 
-# Adapted from transformers.models.maskformer.image_processing_maskformer_fast.convert_segmentation_map_to_binary_masks_fast
-def convert_segmentation_map_to_binary_masks_fast(
-    segmentation_map: "torch.Tensor",
-    instance_id_to_semantic_id: dict[int, int] | None = None,
-    ignore_index: int | None = None,
-):
-    if ignore_index is not None:
-        segmentation_map = torch.where(segmentation_map == 0, ignore_index, segmentation_map - 1)
-
-    all_labels = torch.unique(segmentation_map)
-
-    if ignore_index is not None:
-        all_labels = all_labels[all_labels != ignore_index]  # drop background label if applicable
+class EomtImageProcessorFastKwargs(DefaultFastImageProcessorKwargs):
+    """
+    do_split_image (`bool`, *optional*, defaults to `False`):
+            Whether to split the input images into overlapping patches for semantic segmentation. If set to `True`, the
+            input images will be split into patches of size `size["shortest_edge"]` with an overlap between patches.
+            Otherwise, the input images will be padded to the target size.
+    do_pad (`bool`, *optional*, defaults to `False`):
+            Whether to pad the image. If `True`, will pad the patch dimension of the images in the batch to the largest
+            number of patches in the batch. Padding will be applied to the bottom and right with zeros.
+    ignore_index (`int`, *optional*):
+            Label to be assigned to background pixels in segmentation maps. If provided, segmentation map pixels
+            denoted with 0 (background) will be replaced with `ignore_index`.
+    """
 
     binary_masks = [(segmentation_map == i) for i in all_labels]
     if binary_masks:
@@ -208,7 +208,7 @@ class EomtImageProcessorFast(BaseImageProcessorFast):
                     "do_normalize": False,
                     "do_rescale": False,
                     # Nearest interpolation is used for segmentation maps instead of BILINEAR.
-                    "interpolation": tvF.InterpolationMode.NEAREST_EXACT,
+                    "interpolation": F.InterpolationMode.NEAREST_EXACT,
                 }
             )
 

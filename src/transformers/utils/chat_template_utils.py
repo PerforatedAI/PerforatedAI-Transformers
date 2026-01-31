@@ -462,10 +462,10 @@ def _compile_jinja_template(chat_template):
 
 
 def render_jinja_template(
-    conversations: list[ChatType],
-    tools: list[dict | Callable] | None = None,
-    documents: ChatType | None = None,
-    chat_template: str | None = None,
+    conversations: list[list[dict[str, str]]],
+    tools: Optional[list[Union[dict, Callable]]] = None,
+    documents: Optional[list[dict[str, str]]] = None,
+    chat_template: Optional[str] = None,
     return_assistant_tokens_mask: bool = False,
     continue_final_message: bool = False,
     add_generation_prompt: bool = False,

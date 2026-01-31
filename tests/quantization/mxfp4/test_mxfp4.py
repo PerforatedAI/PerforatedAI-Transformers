@@ -226,6 +226,79 @@ class Mxfp4QuantizerTest(unittest.TestCase):
             quantizer.validate_environment()
             self.assertTrue(quantizer.quantization_config.dequantize)
 
+    def test_update_dtype(self):
+        """Test torch dtype updating"""
+        from transformers.quantizers.quantizer_mxfp4 import Mxfp4HfQuantizer
+
+        config = Mxfp4Config()
+        quantizer = Mxfp4HfQuantizer(config)
+
+        # Should default to bfloat16
+        result_dtype = quantizer.update_dtype(None)
+        self.assertEqual(result_dtype, torch.bfloat16)
+
+        # Should preserve existing dtype
+        result_dtype = quantizer.update_dtype(torch.float32)
+        self.assertEqual(result_dtype, torch.float32)
+
+    def test_update_expected_keys(self):
+        """Test expected keys updating for quantized models"""
+        from transformers.quantizers.quantizer_mxfp4 import Mxfp4HfQuantizer
+
+        config = Mxfp4Config()
+        quantizer = Mxfp4HfQuantizer(config)
+
+        expected_keys = [
+            "model.layers.0.mlp.experts.gate_up_proj",
+            "model.layers.0.mlp.experts.down_proj",
+            "model.embed_tokens.weight",
+        ]
+
+        updated_keys = quantizer.update_expected_keys(None, expected_keys, [])
+
+        expected_updated = [
+            "model.layers.0.mlp.experts.gate_up_proj_blocks",
+            "model.layers.0.mlp.experts.gate_up_proj_scales",
+            "model.layers.0.mlp.experts.down_proj_blocks",
+            "model.layers.0.mlp.experts.down_proj_scales",
+            "model.embed_tokens.weight",
+        ]
+
+        self.assertEqual(set(updated_keys), set(expected_updated))
+
+    def test_get_param_name_dequantize(self):
+        """Test parameter name updating when dequantizing"""
+        from transformers.quantizers.quantizer_mxfp4 import Mxfp4HfQuantizer
+
+        config = Mxfp4Config(dequantize=True)
+        quantizer = Mxfp4HfQuantizer(config)
+
+        # Should remove _blocks suffix
+        param_name = "model.layers.0.mlp.experts.gate_up_proj_blocks"
+        updated_name = quantizer.get_param_name(param_name)
+        self.assertEqual(updated_name, "model.layers.0.mlp.experts.gate_up_proj")
+
+        # Should remove _scales suffix
+        param_name = "model.layers.0.mlp.experts.down_proj_scales"
+        updated_name = quantizer.get_param_name(param_name)
+        self.assertEqual(updated_name, "model.layers.0.mlp.experts.down_proj")
+
+        # Should not change other names
+        param_name = "model.embed_tokens.weight"
+        updated_name = quantizer.get_param_name(param_name)
+        self.assertEqual(updated_name, "model.embed_tokens.weight")
+
+    def test_get_param_name_no_dequantize(self):
+        """Test parameter name updating when not dequantizing"""
+        from transformers.quantizers.quantizer_mxfp4 import Mxfp4HfQuantizer
+
+        config = Mxfp4Config(dequantize=False)
+        quantizer = Mxfp4HfQuantizer(config)
+
+        param_name = "model.layers.0.mlp.experts.gate_up_proj_blocks"
+        updated_name = quantizer.get_param_name(param_name)
+        self.assertEqual(updated_name, param_name)
+
     def test_is_trainable(self):
         """Test trainability"""
         from transformers.quantizers.quantizer_mxfp4 import Mxfp4HfQuantizer

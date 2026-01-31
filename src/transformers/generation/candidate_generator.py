@@ -562,7 +562,7 @@ class AssistedCandidateGeneratorDifferentTokenizers(AssistedCandidateGenerator):
         )
         self.assistant_kwargs.pop("attention_mask", None)
 
-        assistant_output = self.assistant_model.generate(**generation_args)
+        assistant_output = self.assistant_model.generate(**generation_args, **self.assistant_kwargs)
         new_target_ids = self._process_assistant_outputs(input_ids, assistant_output.sequences)
 
         # Update state

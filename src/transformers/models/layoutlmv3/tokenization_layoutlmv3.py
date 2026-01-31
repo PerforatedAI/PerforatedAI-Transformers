@@ -231,11 +231,117 @@ class LayoutLMv3Tokenizer(TokenizersBackend):
             add_prefix_space=add_prefix_space,
             trim_offsets=True,
         )
-        self.cls_token_box = cls_token_box
-        self.sep_token_box = sep_token_box
-        self.pad_token_box = pad_token_box
-        self.pad_token_label = pad_token_label
-        self.only_label_first_subword = only_label_first_subword
+        merge_file = os.path.join(
+            save_directory, (filename_prefix + "-" if filename_prefix else "") + VOCAB_FILES_NAMES["merges_file"]
+        )
+
+        with open(vocab_file, "w", encoding="utf-8") as f:
+            f.write(json.dumps(self.encoder, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+
+        index = 0
+        with open(merge_file, "w", encoding="utf-8") as writer:
+            writer.write("#version: 0.2\n")
+            for bpe_tokens, token_index in sorted(self.bpe_ranks.items(), key=lambda kv: kv[1]):
+                if index != token_index:
+                    logger.warning(
+                        f"Saving vocabulary to {merge_file}: BPE merge indices are not consecutive."
+                        " Please check that the tokenizer is not corrupted!"
+                    )
+                    index = token_index
+                writer.write(" ".join(bpe_tokens) + "\n")
+                index += 1
+
+        return vocab_file, merge_file
+
+    # Copied from transformers.models.roberta.tokenization_roberta.RobertaTokenizer.build_inputs_with_special_tokens
+    def build_inputs_with_special_tokens(
+        self, token_ids_0: list[int], token_ids_1: Optional[list[int]] = None
+    ) -> list[int]:
+        """
+        Build model inputs from a sequence or a pair of sequence for sequence classification tasks by concatenating and
+        adding special tokens. A RoBERTa sequence has the following format:
+
+        - single sequence: `<s> X </s>`
+        - pair of sequences: `<s> A </s></s> B </s>`
+
+        Args:
+            token_ids_0 (`list[int]`):
+                List of IDs to which the special tokens will be added.
+            token_ids_1 (`list[int]`, *optional*):
+                Optional second list of IDs for sequence pairs.
+
+        Returns:
+            `list[int]`: List of [input IDs](../glossary#input-ids) with the appropriate special tokens.
+        """
+        if token_ids_1 is None:
+            return [self.cls_token_id] + token_ids_0 + [self.sep_token_id]
+        cls = [self.cls_token_id]
+        sep = [self.sep_token_id]
+        return cls + token_ids_0 + sep + sep + token_ids_1 + sep
+
+    # Copied from transformers.models.roberta.tokenization_roberta.RobertaTokenizer.get_special_tokens_mask
+    def get_special_tokens_mask(
+        self, token_ids_0: list[int], token_ids_1: Optional[list[int]] = None, already_has_special_tokens: bool = False
+    ) -> list[int]:
+        """
+        Retrieve sequence ids from a token list that has no special tokens added. This method is called when adding
+        special tokens using the tokenizer `prepare_for_model` method.
+
+        Args:
+            token_ids_0 (`list[int]`):
+                List of IDs.
+            token_ids_1 (`list[int]`, *optional*):
+                Optional second list of IDs for sequence pairs.
+            already_has_special_tokens (`bool`, *optional*, defaults to `False`):
+                Whether or not the token list is already formatted with special tokens for the model.
+
+        Returns:
+            `list[int]`: A list of integers in the range [0, 1]: 1 for a special token, 0 for a sequence token.
+        """
+        if already_has_special_tokens:
+            return super().get_special_tokens_mask(
+                token_ids_0=token_ids_0, token_ids_1=token_ids_1, already_has_special_tokens=True
+            )
+
+        if token_ids_1 is None:
+            return [1] + ([0] * len(token_ids_0)) + [1]
+        return [1] + ([0] * len(token_ids_0)) + [1, 1] + ([0] * len(token_ids_1)) + [1]
+
+    # Copied from transformers.models.roberta.tokenization_roberta.RobertaTokenizer.create_token_type_ids_from_sequences
+    def create_token_type_ids_from_sequences(
+        self, token_ids_0: list[int], token_ids_1: Optional[list[int]] = None
+    ) -> list[int]:
+        """
+        Create a mask from the two sequences passed to be used in a sequence-pair classification task. RoBERTa does not
+        make use of token type ids, therefore a list of zeros is returned.
+
+        Args:
+            token_ids_0 (`list[int]`):
+                List of IDs.
+            token_ids_1 (`list[int]`, *optional*):
+                Optional second list of IDs for sequence pairs.
+
+        Returns:
+            `list[int]`: List of zeros.
+        """
+        sep = [self.sep_token_id]
+        cls = [self.cls_token_id]
+
+        if token_ids_1 is None:
+            return len(cls + token_ids_0 + sep) * [0]
+        return len(cls + token_ids_0 + sep + sep + token_ids_1 + sep) * [0]
+
+    def prepare_for_tokenization(self, text, is_split_into_words=False, **kwargs):
+        add_prefix_space = kwargs.pop("add_prefix_space", self.add_prefix_space)
+        # If the text starts with a token that should not be split, no space is added before the text in any case.
+        # It's necessary to match the fast tokenization
+        if (
+            (is_split_into_words or add_prefix_space)
+            and (len(text) > 0 and not text[0].isspace())
+            and sum(text.startswith(no_split_token) for no_split_token in self.added_tokens_encoder) == 0
+        ):
+            text = " " + text
+        return (text, kwargs)
 
     @add_end_docstrings(LAYOUTLMV3_ENCODE_KWARGS_DOCSTRING, LAYOUTLMV3_ENCODE_PLUS_ADDITIONAL_KWARGS_DOCSTRING)
     def __call__(

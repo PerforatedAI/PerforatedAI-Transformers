@@ -147,11 +147,13 @@ class TokenClassificationPipeline(ChunkPipeline):
     def _sanitize_parameters(
         self,
         ignore_labels=None,
-        aggregation_strategy: AggregationStrategy | None = None,
-        offset_mapping: list[tuple[int, int]] | None = None,
+        grouped_entities: Optional[bool] = None,
+        ignore_subwords: Optional[bool] = None,
+        aggregation_strategy: Optional[AggregationStrategy] = None,
+        offset_mapping: Optional[list[tuple[int, int]]] = None,
         is_split_into_words: bool = False,
-        stride: int | None = None,
-        delimiter: str | None = None,
+        stride: Optional[int] = None,
+        delimiter: Optional[str] = None,
     ):
         preprocess_params = {}
         preprocess_params["is_split_into_words"] = is_split_into_words

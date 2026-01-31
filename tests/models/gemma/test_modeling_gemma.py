@@ -18,7 +18,7 @@ import unittest
 import pytest
 from packaging import version
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, is_torch_available
+from transformers import AutoModelForCausalLM, AutoTokenizer, is_torch_available
 from transformers.generation.configuration_utils import GenerationConfig
 from transformers.testing_utils import (
     DeviceProperties,
@@ -53,6 +53,17 @@ class GemmaModelTester(CausalLMModelTester):
 
 @require_torch
 class GemmaModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": GemmaModel,
+            "text-classification": GemmaForSequenceClassification,
+            "token-classification": GemmaForTokenClassification,
+            "text-generation": GemmaForCausalLM,
+            "zero-shot": GemmaForSequenceClassification,
+        }
+        if is_torch_available()
+        else {}
+    )
     model_tester_class = GemmaModelTester
 
     # used in `test_torch_compile_for_training`

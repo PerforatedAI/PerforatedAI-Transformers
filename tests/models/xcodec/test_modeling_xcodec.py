@@ -111,6 +111,7 @@ class XcodecModelTest(ModelTesterMixin, unittest.TestCase):
     is_encoder_decoder = True
 
     test_resize_embeddings = False
+    test_torchscript = False
 
     def _prepare_for_class(self, inputs_dict, model_class, return_labels=False):
         # model does not support returning hidden states

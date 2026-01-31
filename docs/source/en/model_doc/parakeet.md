@@ -188,9 +188,9 @@ outputs = model(**inputs)
 outputs.loss.backward()
 ```
 
-## ParakeetTokenizer
+## ParakeetTokenizerFast
 
-[[autodoc]] ParakeetTokenizer
+[[autodoc]] ParakeetTokenizerFast
 
 ## ParakeetFeatureExtractor
 

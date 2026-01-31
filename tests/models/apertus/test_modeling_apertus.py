@@ -43,6 +43,15 @@ class ApertusModelTester(CausalLMModelTester):
 
 @require_torch
 class ApertusModelTest(CausalLMModelTest, unittest.TestCase):
+    pipeline_model_mapping = (
+        {
+            "feature-extraction": ApertusModel,
+            "text-generation": ApertusForCausalLM,
+            "token-classification": ApertusForTokenClassification,
+        }
+        if is_torch_available()
+        else {}
+    )
     model_tester_class = ApertusModelTester
 
     # Need to use `0.8` instead of `0.9` for `test_cpu_offload`

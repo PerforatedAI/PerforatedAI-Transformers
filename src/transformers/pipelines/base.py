@@ -56,6 +56,11 @@ from ..utils.chat_template_utils import Chat, is_valid_message
 
 GenericTensor = Union[list["GenericTensor"], "torch.Tensor"]
 
+if is_tf_available():
+    import tensorflow as tf
+
+    from ..models.auto.modeling_tf_auto import TFAutoModel
+
 if is_torch_available() or TYPE_CHECKING:
     import torch
     from torch.utils.data import DataLoader, Dataset
@@ -935,18 +940,12 @@ class Pipeline(_ScikitCompat, PushToHubMixin):
                 # then we should keep working
                 self.image_processor = self.feature_extractor
 
-    def __repr__(self):
-        pipe_information = {
-            "model": self.model.__class__.__name__,
-            "dtype": str(self.dtype).split(".")[-1],
-            "device": self.device.type,
-            "input_modalities": self.model.input_modalities,
-        }
-        if self.model.can_generate():
-            pipe_information["output_modalities"] = self.model.output_modalities
-        return f"{self.__class__.__name__}: {pipe_information}"
-
-    def save_pretrained(self, save_directory: str | os.PathLike, **kwargs: Any):
+    def save_pretrained(
+        self,
+        save_directory: Union[str, os.PathLike],
+        safe_serialization: bool = True,
+        **kwargs: Any,
+    ):
         """
         Save the pipeline's model and tokenizer.
 

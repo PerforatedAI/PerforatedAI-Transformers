@@ -42,7 +42,6 @@ _is_torch_available = False
 if is_torch_available():
     # required for @can_return_tuple decorator to work with torchdynamo
     import torch
-    from torch.types import _dtype
 
     from ..model_debugging_utils import model_addition_debugger_context
 
@@ -855,8 +854,8 @@ class OutputRecorder:
 
     target_class: "type[torch.nn.Module]"
     index: int = 0
-    layer_name: str | None = None
-    class_name: str | None = None
+    layer_name: Optional[str] = None
+    class_name: Optional[str] = None
 
 
 def check_model_inputs(func=None, *, tie_last_hidden_states=True):
@@ -875,46 +874,17 @@ def check_model_inputs(func=None, *, tie_last_hidden_states=True):
     def wrapped_fn(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
-            args_with_config_defaults = [
-                "use_cache",
-                "vision_feature_layer",
-                "vision_feature_select_strategy",
-                "vision_aspect_ratio",
-            ]
-            for arg_name in args_with_config_defaults:
-                arg_index = None
-                if arg_name in func.__code__.co_varnames:
-                    arg_index = func.__code__.co_varnames.index(arg_name) - 1  # -1 for self
+            use_cache = (
+                kwargs["use_cache"] if kwargs.get("use_cache") is not None else getattr(self.config, "use_cache", None)
+            )
+            if use_cache is not None:
+                if getattr(self, "gradient_checkpointing", False) and self.training and use_cache:
+                    logger.warning_once(
+                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
+                    )
+                    use_cache = False
 
-                if arg_index is not None and len(args) > arg_index and args[arg_index] is not None:
-                    arg_value = args[arg_index]
-                elif kwargs.get(arg_name) is not None:
-                    arg_value = kwargs[arg_name]
-                else:
-                    arg_value = getattr(self.config, arg_name, None)
-
-                if arg_value is not None:
-                    # Arg-specific handling
-                    if arg_name == "use_cache":
-                        if getattr(self, "gradient_checkpointing", False) and self.training and arg_value:
-                            logger.warning_once(
-                                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-                            )
-                            arg_value = False
-                    elif arg_name == "vision_feature_select_strategy":
-                        valid_strategies = ["default", "full"]
-                        if arg_value not in valid_strategies:
-                            raise ValueError(
-                                f"`Unexpected select feature strategy: {arg_value}. "
-                                f"Please select from {valid_strategies}."
-                            )
-
-                    if arg_index is not None and len(args) > arg_index:
-                        args = list(args)
-                        args[arg_index] = arg_value
-                        args = tuple(args)
-                    else:
-                        kwargs[arg_name] = arg_value
+                kwargs["use_cache"] = use_cache
 
             return_dict = kwargs.pop("return_dict", None)
             if return_dict is None:
@@ -925,8 +895,7 @@ def check_model_inputs(func=None, *, tie_last_hidden_states=True):
                 for k, v in all_args["kwargs"].items():
                     all_args[k] = v
 
-            # _can_record_outputs is None by default
-            capture_flags = _CAN_RECORD_REGISTRY.get(str(self.__class__)) or {}  # there is a weak ref for executorch
+            capture_flags = _CAN_RECORD_REGISTRY.get(str(self.__class__), {})  # there is a weak ref for executorch
             recordable_keys = {
                 f"output_{k}": all_args.get(
                     f"output_{k}",
@@ -947,12 +916,33 @@ def check_model_inputs(func=None, *, tie_last_hidden_states=True):
             collected_outputs = defaultdict(tuple)
             monkey_patched_layers = []
 
+            # Check attention implementation is properly set for capturing attention outputs
+            if recordable_keys.get("output_attentions", False):
+                supported_attn = ["eager", "eager_paged", "flex_attention"]
+                config_attn = getattr(self.config, "_attn_implementation", None)
+                sub_configs = [getattr(self.config, key, None) for key in self.config.sub_configs]
+                sub_configs_attn = [
+                    getattr(config, "_attn_implementation", None) for config in sub_configs if config is not None
+                ]
+                if config_attn not in supported_attn or any(attn not in supported_attn for attn in sub_configs_attn):
+                    warnings.warn(
+                        f"`output_attentions=True` is not supported with `attn_implementation` other than {supported_attn}. "
+                        "Please use `model.set_attn_implementation('eager')` to enable capturing attention outputs.",
+                        UserWarning,
+                    )
+
             def make_capture_wrapper(module, orig_forward, key, index):
                 @wraps(orig_forward)
                 def wrapped_forward(*args, **kwargs):
                     if key == "hidden_states" and len(collected_outputs[key]) == 0:
                         collected_outputs[key] += (args[0],)
-                    output = orig_forward(*args, **kwargs)
+                    if kwargs.get("debug_io", False):
+                        with model_addition_debugger_context(
+                            module, kwargs.get("debug_io_dir", "~/model_debug"), kwargs.get("prune_layers")
+                        ):
+                            output = orig_forward(*args, **kwargs)
+                    else:
+                        output = orig_forward(*args, **kwargs)
                     if not isinstance(output, tuple):
                         collected_outputs[key] += (output,)
                     elif output[index] is not None:
@@ -993,13 +983,7 @@ def check_model_inputs(func=None, *, tie_last_hidden_states=True):
                             monkey_patched_layers.append((module, original_forward))
 
             try:
-                if kwargs.get("debug_io", False):
-                    with model_addition_debugger_context(
-                        self, kwargs.get("debug_io_dir", "model_debug"), kwargs.get("prune_layers")
-                    ):
-                        outputs = func(self, *args, **kwargs)
-                else:
-                    outputs = func(self, *args, **kwargs)
+                outputs = func(self, *args, **kwargs)
             except TypeError as original_exception:
                 # If we get a TypeError, it's possible that the model is not receiving the recordable kwargs correctly.
                 # Get a TypeError even after removing the recordable kwargs -> re-raise the original exception

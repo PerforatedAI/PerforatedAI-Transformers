@@ -116,9 +116,9 @@ def list_repo_templates(
     repo_id: str,
     *,
     local_files_only: bool,
-    revision: str | None = None,
-    cache_dir: str | None = None,
-    token: str | bool | None = None,
+    revision: Optional[str] = None,
+    cache_dir: Optional[str] = None,
+    token: Union[bool, str, None] = None,
 ) -> list[str]:
     """List template files from a repo.
 
@@ -791,7 +791,7 @@ class PushToHubMixin:
             )
 
 
-def convert_file_size_to_int(size: int | str):
+def convert_file_size_to_int(size: Union[int, str]):
     """
     Converts a size expressed as a string with digits an unit (like `"5MB"`) to an integer (in bytes).
 
@@ -848,6 +848,17 @@ def get_checkpoint_shard_files(
     For the description of each arg, see [`PreTrainedModel.from_pretrained`]. `index_filename` is the full path to the
     index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
     """
+
+    use_auth_token = deprecated_kwargs.pop("use_auth_token", None)
+    if use_auth_token is not None:
+        warnings.warn(
+            "The `use_auth_token` argument is deprecated and will be removed in v5 of Transformers. Please use `token` instead.",
+            FutureWarning,
+        )
+        if token is not None:
+            raise ValueError("`token` and `use_auth_token` are both specified. Please set only the argument `token`.")
+        token = use_auth_token
+
     if not os.path.isfile(index_filename):
         raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
 

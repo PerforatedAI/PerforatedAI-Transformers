@@ -118,8 +118,8 @@ sequence length a good value for `num_buckets` is calculated on the fly. This va
 saved in the config and should be reused for inference.
 
 Using LSH self attention, the memory and time complexity of the query-key matmul operation can be reduced from
-$\mathcal{O}(n_s \times n_s)$ to $\mathcal{O}(n_s \times \log(n_s))$, which usually represents the memory
-and time bottleneck in a transformer model, with $n_s$ being the sequence length.
+\\(\mathcal{O}(n_s \times n_s)\\) to \\(\mathcal{O}(n_s \times \log(n_s))\\), which usually represents the memory
+and time bottleneck in a transformer model, with \\(n_s\\) being the sequence length.
 
 ### Local Self Attention
 
@@ -129,8 +129,8 @@ the key embedding vectors in its chunk and to the key embedding vectors of `conf
 previous neighboring chunks and `config.local_num_chunks_after` following neighboring chunks.
 
 Using Local self attention, the memory and time complexity of the query-key matmul operation can be reduced from
-$\mathcal{O}(n_s \times n_s)$ to $\mathcal{O}(n_s \times \log(n_s))$, which usually represents the memory
-and time bottleneck in a transformer model, with $n_s$ being the sequence length.
+\\(\mathcal{O}(n_s \times n_s)\\) to \\(\mathcal{O}(n_s \times \log(n_s))\\), which usually represents the memory
+and time bottleneck in a transformer model, with \\(n_s\\) being the sequence length.
 
 ### Training
 

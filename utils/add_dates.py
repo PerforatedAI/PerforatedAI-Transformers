@@ -2,9 +2,8 @@ import argparse
 import os
 import re
 import subprocess
-from datetime import date, datetime
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from datetime import date
+from typing import Optional
 
 from huggingface_hub import paper_info
 
@@ -78,24 +77,16 @@ def check_file_exists_on_github(file_path: str) -> bool:
 def get_modified_cards() -> list[str]:
     """Get the list of model names from modified files in docs/source/en/model_doc/"""
 
-    current_branch = subprocess.check_output(["git", "branch", "--show-current"], text=True).strip()
-    if current_branch == "main":
-        # On main branch, only uncommitted changes detected
-        result = subprocess.check_output(["git", "diff", "--name-only", "HEAD"], text=True)
-    else:
-        fork_point_sha = subprocess.check_output("git merge-base main HEAD".split()).decode("utf-8")
-        result = subprocess.check_output(f"git diff --name-only {fork_point_sha}".split()).decode("utf-8")
+    result = subprocess.check_output(["git", "diff", "--name-only", "upstream/main"], text=True)
 
     model_names = []
     for line in result.strip().split("\n"):
         if line:
             # Check if the file is in the model_doc directory
             if line.startswith("docs/source/en/model_doc/") and line.endswith(".md"):
-                file_path = os.path.join(ROOT, line)
-                if os.path.exists(file_path):
-                    model_name = os.path.splitext(os.path.basename(line))[0]
-                    if model_name not in ["auto", "timm_wrapper"]:
-                        model_names.append(model_name)
+                model_name = os.path.splitext(os.path.basename(line))[0]
+                if model_name not in ["auto", "timm_wrapper"]:
+                    model_names.append(model_name)
 
     return model_names
 
@@ -136,14 +127,15 @@ def get_first_commit_date(model_name: str | None) -> str:
     if not os.path.exists(file_path):
         file_path = os.path.join(DOCS_PATH, f"{model_name}.md")
 
-    # Check if file exists on GitHub main branch
-    file_exists_on_github = check_file_exists_on_github(file_path)
-
-    if not file_exists_on_github:
-        # File does not exist on GitHub main branch (new model), use today's date
+    # Check if file exists in upstream/main
+    result_main = subprocess.check_output(
+        ["git", "ls-tree", "upstream/main", "--", file_path], text=True, stderr=subprocess.DEVNULL
+    )
+    if not result_main:
+        # File does not exist in upstream/main (new model), use today's date
         final_date = date.today().isoformat()
     else:
-        # File exists on GitHub main branch, get the first commit date from local git history
+        # File exists in upstream/main, get the first commit date
         final_date = subprocess.check_output(
             ["git", "log", "--reverse", "--pretty=format:%ad", "--date=iso", file_path], text=True
         )
@@ -162,6 +154,7 @@ def get_release_date(link: str) -> str:
             pass
 
     elif link.startswith("https://arxiv.org/abs/") or link.startswith("https://arxiv.org/pdf/"):
+        print(f"This paper {link} is not yet available in Hugging Face papers, skipping the release date attachment.")
         return r"{release_date}"
 
 
@@ -301,18 +294,27 @@ def insert_dates(model_card_list: list[str]):
         hf_commit_date = get_first_commit_date(model_name=model_card)
         paper_link = get_paper_link(model_card=model_card, path=file_path)
 
-        if paper_link in ("No_paper", "blog"):
-            release_date = r"{release_date}"
-        else:
+        paper_link = get_paper_link(model_card=model_card, path=file_path)
+        release_date = ""
+        if not (paper_link == "No_paper" or paper_link == "blog"):
             release_date = get_release_date(paper_link)
+        else:
+            release_date = r"{release_date}"
 
-        match = _get_dates_pattern_match(content)
+        match = re.search(pattern, content)
 
-        # Update or insert the dates line
+        # If the dates info line already exists, preserve the existing release date unless it's a placeholder, and update the HF commit date if needed
         if match:
-            # Preserve existing release date unless it's a placeholder
-            existing_release_date = match.group(1)
-            existing_hf_date = match.group(2)
+            existing_release_date = match.group(1)  # The release date part
+            existing_hf_date = match.group(2)  # The existing HF date part
+            release_date = (
+                release_date
+                if (existing_release_date == r"{release_date}" or existing_release_date == "None")
+                else existing_release_date
+            )
+            if existing_hf_date != hf_commit_date or existing_release_date != release_date:
+                old_line = match.group(0)  # Full matched line
+                new_line = f"\n*This model was released on {release_date} and added to Hugging Face Transformers on {hf_commit_date}.*"
 
             if existing_release_date not in (r"{release_date}", "None"):
                 release_date = existing_release_date
@@ -324,7 +326,6 @@ def insert_dates(model_card_list: list[str]):
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(content)
         else:
-            # Insert new dates line after copyright marker
             insert_index = markers[0].end()
             date_info = f"\n*This model was released on {release_date} and added to Hugging Face Transformers on {hf_commit_date}.*"
             content = content[:insert_index] + date_info + content[insert_index:]

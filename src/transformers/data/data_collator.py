@@ -17,7 +17,7 @@ import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from random import randint
-from typing import Any
+from typing import Any, Callable, Optional, Union
 
 import numpy as np
 
@@ -35,7 +35,7 @@ DataCollator = Callable[[list[InputDataClass]], dict[str, Any]]
 
 
 class DataCollatorMixin:
-    def __call__(self, features, return_tensors: str | None = None):
+    def __call__(self, features, return_tensors: Optional[str] = None):
         if return_tensors is None:
             return_tensors = self.return_tensors
         if return_tensors == "pt":
@@ -682,7 +682,7 @@ class DataCollatorForLanguageModeling(DataCollatorMixin):
     tokenizer: PreTrainedTokenizerBase
     mlm: bool = True
     whole_word_mask: bool = False
-    mlm_probability: float | None = 0.15
+    mlm_probability: Optional[float] = 0.15
     mask_replace_prob: float = 0.8
     random_replace_prob: float = 0.1
     pad_to_multiple_of: int | None = None
@@ -728,6 +728,25 @@ class DataCollatorForLanguageModeling(DataCollatorMixin):
 
         self.mask_replace_prob = float(self.mask_replace_prob)
         self.random_replace_prob = float(self.random_replace_prob)
+
+        if self.tf_experimental_compile:
+            import tensorflow as tf
+
+            self.tf_mask_tokens = tf.function(self.tf_mask_tokens, jit_compile=True)
+        if self.whole_word_mask:
+            if not self.tokenizer.is_fast:
+                warnings.warn(
+                    "Whole word masking depends on offset mapping which is only natively available with fast tokenizers.",
+                    UserWarning,
+                )
+
+            if self.mask_replace_prob < 1:
+                warnings.warn(
+                    "Random token replacement is not supported with whole word masking.",
+                    "Setting mask_replace_prob to 1.",
+                )
+                self.mask_replace_prob = 1
+                self.random_replace_prob = 0
 
         self.generator = None
 
@@ -794,7 +813,7 @@ class DataCollatorForLanguageModeling(DataCollatorMixin):
         return batch
 
     def torch_mask_tokens(
-        self, inputs: Any, special_tokens_mask: Any | None = None, offset_mapping: Any | None = None
+        self, inputs: Any, special_tokens_mask: Optional[Any] = None, offset_mapping: Optional[Any] = None
     ) -> tuple[Any, Any]:
         """
         Prepare masked tokens inputs/labels for masked language modeling.
@@ -890,8 +909,8 @@ class DataCollatorForLanguageModeling(DataCollatorMixin):
     def numpy_mask_tokens(
         self,
         inputs: Any,
-        special_tokens_mask: Any | None = None,
-        offset_mapping: Any | None = None,
+        special_tokens_mask: Optional[Any] = None,
+        offset_mapping: Optional[Any] = None,
     ) -> tuple[Any, Any]:
         """
         Prepare masked tokens inputs/labels for masked language modeling.
@@ -1023,6 +1042,218 @@ class DataCollatorForWholeWordMask(DataCollatorForLanguageModeling):
     - collates batches of tensors, honoring their tokenizer's pad_token
     - preprocesses batches for masked language modeling
     """
+
+    <Tip>
+
+    This collator relies on details of the implementation of subword tokenization by [`BertTokenizer`], specifically
+    that subword tokens are prefixed with *##*. For tokenizers that do not adhere to this scheme, this collator will
+    produce an output that is roughly equivalent to [`.DataCollatorForLanguageModeling`].
+
+    </Tip>"""
+
+    def torch_call(self, examples: list[Union[list[int], Any, dict[str, Any]]]) -> dict[str, Any]:
+        if self.seed and self.generator is None:
+            # If we have a seed, we need to create a generator object. Subsequent calls to this function will use the same generator.
+            # If no seed supplied, we will use the global RNG
+            self.create_rng()
+
+        if isinstance(examples[0], Mapping):
+            input_ids = [e["input_ids"] for e in examples]
+        else:
+            input_ids = examples
+            examples = [{"input_ids": e} for e in examples]
+
+        batch_input = _torch_collate_batch(input_ids, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
+
+        mask_labels = []
+        for e in examples:
+            ref_tokens = []
+            for id in tolist(e["input_ids"]):
+                token = self.tokenizer._convert_id_to_token(id)
+                ref_tokens.append(token)
+
+            # For Chinese tokens, we need extra inf to mark sub-word, e.g [喜,欢]-> [喜，##欢]
+            if "chinese_ref" in e:
+                ref_pos = tolist(e["chinese_ref"])
+                len_seq = len(e["input_ids"])
+                for i in range(len_seq):
+                    if i in ref_pos:
+                        ref_tokens[i] = "##" + ref_tokens[i]
+            mask_labels.append(self._whole_word_mask(ref_tokens))
+        batch_mask = _torch_collate_batch(mask_labels, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
+        inputs, labels = self.torch_mask_tokens(batch_input, batch_mask)
+        return {"input_ids": inputs, "labels": labels}
+
+    def tf_call(self, examples: list[Union[list[int], Any, dict[str, Any]]]) -> dict[str, Any]:
+        import tensorflow as tf
+
+        if self.seed and self.generator is None:
+            # If we have a seed, we need to create a generator object. Subsequent calls to this function will use the same generator.
+            # If no seed supplied, we will use the global RNG
+            self.create_rng()
+
+        if isinstance(examples[0], Mapping):
+            input_ids = [e["input_ids"] for e in examples]
+        else:
+            input_ids = examples
+            examples = [{"input_ids": e} for e in examples]
+
+        batch_input = _tf_collate_batch(input_ids, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
+
+        mask_labels = []
+        for e in examples:
+            ref_tokens = []
+            for id in tolist(e["input_ids"]):
+                token = self.tokenizer._convert_id_to_token(id)
+                ref_tokens.append(token)
+
+            # For Chinese tokens, we need extra inf to mark sub-word, e.g [喜,欢]-> [喜，##欢]
+            if "chinese_ref" in e:
+                ref_pos = tolist(e["chinese_ref"])
+                len_seq = len(e["input_ids"])
+                for i in range(len_seq):
+                    if i in ref_pos:
+                        ref_tokens[i] = "##" + ref_tokens[i]
+            mask_labels.append(self._whole_word_mask(ref_tokens))
+        batch_mask = _tf_collate_batch(mask_labels, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
+        inputs, labels = self.tf_mask_tokens(tf.cast(batch_input, tf.int64), batch_mask)
+        return {"input_ids": inputs, "labels": labels}
+
+    def numpy_call(self, examples: list[Union[list[int], Any, dict[str, Any]]]) -> dict[str, Any]:
+        if self.seed and self.generator is None:
+            # If we have a seed, we need to create a generator object. Subsequent calls to this function will use the same generator.
+            # If no seed supplied, we will use the global RNG
+            self.create_rng()
+
+        if isinstance(examples[0], Mapping):
+            input_ids = [e["input_ids"] for e in examples]
+        else:
+            input_ids = examples
+            examples = [{"input_ids": e} for e in examples]
+
+        batch_input = _numpy_collate_batch(input_ids, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
+
+        mask_labels = []
+        for e in examples:
+            ref_tokens = []
+            for id in tolist(e["input_ids"]):
+                token = self.tokenizer._convert_id_to_token(id)
+                ref_tokens.append(token)
+
+            # For Chinese tokens, we need extra inf to mark sub-word, e.g [喜,欢]-> [喜，##欢]
+            if "chinese_ref" in e:
+                ref_pos = tolist(e["chinese_ref"])
+                len_seq = len(e["input_ids"])
+                for i in range(len_seq):
+                    if i in ref_pos:
+                        ref_tokens[i] = "##" + ref_tokens[i]
+            mask_labels.append(self._whole_word_mask(ref_tokens))
+        batch_mask = _numpy_collate_batch(mask_labels, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
+        inputs, labels = self.numpy_mask_tokens(batch_input, batch_mask)
+        return {"input_ids": inputs, "labels": labels}
+
+    def _shuffle(self, cand_indexes):
+        # if no seed, just use random's shuffle
+        if self.seed is None:
+            random.shuffle(cand_indexes)
+            return cand_indexes
+
+        # if seed is provided, use the generator to shuffle
+        if self.return_tensors == "pt":
+            import torch
+
+            indices = torch.randperm(len(cand_indexes), generator=self.generator)
+            return [cand_indexes[i] for i in indices]
+
+        elif self.return_tensors == "tf":
+            import tensorflow as tf
+
+            seed = self.generator.make_seeds(2)[0]
+            indices = tf.random.experimental.stateless_shuffle(tf.range(len(cand_indexes)), seed=seed).numpy().tolist()
+            return [cand_indexes[i] for i in indices]
+
+        elif self.return_tensors == "np":
+            self.generator.shuffle(cand_indexes)
+            return cand_indexes
+
+    def _whole_word_mask(self, input_tokens: list[str], max_predictions=512):
+        """
+        Get 0/1 labels for masked tokens with whole word mask proxy
+        """
+        from transformers import BertTokenizer, BertTokenizerFast
+
+        if not isinstance(self.tokenizer, (BertTokenizer, BertTokenizerFast)):
+            warnings.warn(
+                "DataCollatorForWholeWordMask is only suitable for BertTokenizer-like tokenizers. "
+                "Please refer to the documentation for more information."
+            )
+
+        cand_indexes = []
+        for i, token in enumerate(input_tokens):
+            if token == "[CLS]" or token == "[SEP]":
+                continue
+
+            if len(cand_indexes) >= 1 and token.startswith("##"):
+                cand_indexes[-1].append(i)
+            else:
+                cand_indexes.append([i])
+
+        cand_indexes = self._shuffle(cand_indexes)
+        num_to_predict = min(max_predictions, max(1, int(round(len(input_tokens) * self.mlm_probability))))
+        masked_lms = []
+        covered_indexes = set()
+        for index_set in cand_indexes:
+            if len(masked_lms) >= num_to_predict:
+                break
+            # If adding a whole-word mask would exceed the maximum number of
+            # predictions, then just skip this candidate.
+            if len(masked_lms) + len(index_set) > num_to_predict:
+                continue
+            for index in index_set:
+                covered_indexes.add(index)
+                masked_lms.append(index)
+
+        if len(covered_indexes) != len(masked_lms):
+            raise ValueError("Length of covered_indexes is not equal to length of masked_lms.")
+        mask_labels = [1 if i in covered_indexes else 0 for i in range(len(input_tokens))]
+        return mask_labels
+
+    def torch_mask_tokens(self, inputs: Any, mask_labels: Any) -> tuple[Any, Any]:
+        """
+        Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original. Set
+        'mask_labels' means we use whole word mask (wwm), we directly mask idxs according to it's ref.
+        """
+        import torch
+
+        if self.tokenizer.mask_token is None:
+            raise ValueError(
+                "This tokenizer does not have a mask token which is necessary for masked language modeling. Remove the"
+                " --mlm flag if you want to use this tokenizer."
+            )
+        labels = inputs.clone()
+        # We sample a few tokens in each sequence for masked-LM training (with probability args.mlm_probability defaults to 0.15 in Bert/RoBERTa)
+
+        probability_matrix = mask_labels
+
+        special_tokens_mask = [
+            self.tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
+        ]
+        probability_matrix.masked_fill_(torch.tensor(special_tokens_mask, dtype=torch.bool), value=0.0)
+        if self.tokenizer.pad_token is not None:
+            padding_mask = labels.eq(self.tokenizer.pad_token_id)
+            probability_matrix.masked_fill_(padding_mask, value=0.0)
+
+        masked_indices = probability_matrix.bool()
+        labels[~masked_indices] = -100  # We only compute loss on masked tokens
+
+        # mask_replace_prob% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+        indices_replaced = (
+            torch.bernoulli(torch.full(labels.shape, self.mask_replace_prob), generator=self.generator).bool()
+            & masked_indices
+        )
+        super().__init__(*args, **kwargs)
+        self.mlm = True  # Force masked language modeling
+        self.whole_word_mask = True  # Force whole word masking
 
     def __init__(self, *args, **kwargs):
         warnings.warn(

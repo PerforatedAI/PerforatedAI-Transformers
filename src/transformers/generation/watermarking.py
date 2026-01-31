@@ -26,11 +26,9 @@ from .. import initialization as init
 from ..configuration_utils import PreTrainedConfig
 from ..modeling_utils import PreTrainedModel
 from ..utils import ModelOutput, logging
+from .configuration_utils import PretrainedConfig, WatermarkingConfig
 from .logits_process import SynthIDTextWatermarkLogitsProcessor, WatermarkLogitsProcessor
 
-
-if TYPE_CHECKING:
-    from .configuration_utils import WatermarkingConfig
 
 logger = logging.get_logger(__name__)
 
@@ -59,13 +57,13 @@ class WatermarkDetectorOutput:
             Array containing confidence scores of a text being machine-generated for each element in the batch.
     """
 
-    num_tokens_scored: np.ndarray | None = None
-    num_green_tokens: np.ndarray | None = None
-    green_fraction: np.ndarray | None = None
-    z_score: np.ndarray | None = None
-    p_value: np.ndarray | None = None
-    prediction: np.ndarray | None = None
-    confidence: np.ndarray | None = None
+    num_tokens_scored: Optional[np.ndarray] = None
+    num_green_tokens: Optional[np.ndarray] = None
+    green_fraction: Optional[np.ndarray] = None
+    z_score: Optional[np.ndarray] = None
+    p_value: Optional[np.ndarray] = None
+    prediction: Optional[np.ndarray] = None
+    confidence: Optional[np.ndarray] = None
 
 
 class WatermarkDetector:
@@ -193,7 +191,7 @@ class WatermarkDetector:
         input_ids: torch.LongTensor,
         z_threshold: float = 3.0,
         return_dict: bool = False,
-    ) -> WatermarkDetectorOutput | np.ndarray:
+    ) -> Union[WatermarkDetectorOutput, np.ndarray]:
         """
                 Args:
                 input_ids (`torch.LongTensor`):

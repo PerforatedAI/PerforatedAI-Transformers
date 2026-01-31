@@ -16,7 +16,7 @@
 from typing import Union
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import (
@@ -63,7 +63,7 @@ class VitMatteImageProcessorFast(BaseImageProcessorFast):
     def _pad_image(
         self,
         images: torch.Tensor,
-        size_divisor: int = 32,
+        size_divisibility: int = 32,
     ) -> torch.Tensor:
         """
         Pads an image or batched images constantly so that width and height are divisible by size_divisor

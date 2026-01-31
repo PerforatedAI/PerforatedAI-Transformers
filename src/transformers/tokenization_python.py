@@ -589,7 +589,7 @@ class PythonBackend(PreTrainedTokenizerBase):
         self._update_total_vocab_size()
         return added_tokens
 
-    def _update_trie(self, unique_no_split_tokens: list[str] | None = None):
+    def _update_trie(self, unique_no_split_tokens: Optional[list[str]] = None):
         for token in self._added_tokens_decoder.values():
             if token.content not in self.tokens_trie._tokens:
                 self.tokens_trie.add(token.content)

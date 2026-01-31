@@ -24,6 +24,7 @@ from typing import Any, Optional, Union
 import torch
 import torchvision.transforms.v2.functional as tvF
 from torch import nn
+from torchvision.transforms.v2 import functional as F
 
 from transformers.image_transforms import get_size_with_aspect_ratio
 
@@ -322,7 +323,7 @@ class Mask2FormerImageProcessorFast(BaseImageProcessorFast):
                         image=stacked_segmentation_maps,
                         size=size,
                         size_divisor=size_divisor,
-                        interpolation=tvF.InterpolationMode.NEAREST_EXACT,
+                        interpolation=F.InterpolationMode.NEAREST_EXACT,
                     )
             resized_images_grouped[shape] = stacked_images
             if segmentation_maps is not None:

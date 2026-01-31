@@ -890,10 +890,7 @@ class DebertaV2OnlyMLMHead(nn.Module):
 
 @auto_docstring
 class DebertaV2ForMaskedLM(DebertaV2PreTrainedModel):
-    _tied_weights_keys = {
-        "cls.predictions.decoder.bias": "cls.predictions.bias",
-        "cls.predictions.decoder.weight": "deberta.embeddings.word_embeddings.weight",
-    }
+    _tied_weights_keys = ["cls.predictions.decoder.weight", "cls.predictions.decoder.bias"]
     _keys_to_ignore_on_load_unexpected = [r"mask_predictions.*"]
 
     def __init__(self, config):

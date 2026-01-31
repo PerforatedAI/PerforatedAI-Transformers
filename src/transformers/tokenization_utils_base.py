@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Union
 
 import numpy as np
-from huggingface_hub import create_repo, is_offline_mode, list_repo_files
+from huggingface_hub import list_repo_files
 from packaging import version
 
 from . import __version__
@@ -1440,7 +1440,63 @@ class PreTrainedTokenizerBase(PushToHubMixin):
         vocabulary.
 
         Args:
-            tokens (`str` or `list[str]`): One or several token(s) to convert to token id(s).
+            conversation (Union[list[dict[str, str]], list[list[dict[str, str]]]]): A list of dicts
+                with "role" and "content" keys, representing the chat history so far.
+            tools (`list[Union[Dict, Callable]]`, *optional*):
+                A list of tools (callable functions) that will be accessible to the model. If the template does not
+                support function calling, this argument will have no effect. Each tool should be passed as a JSON Schema,
+                giving the name, description and argument types for the tool. See our
+                [tool use guide](https://huggingface.co/docs/transformers/en/chat_extras#passing-tools)
+                for more information.
+            documents (`list[dict[str, str]]`, *optional*):
+                A list of dicts representing documents that will be accessible to the model if it is performing RAG
+                (retrieval-augmented generation). If the template does not support RAG, this argument will have no
+                effect. We recommend that each document should be a dict containing "title" and "text" keys.
+            chat_template (`str`, *optional*):
+                A Jinja template to use for this conversion. It is usually not necessary to pass anything to this
+                argument, as the model's template will be used by default.
+            add_generation_prompt (bool, *optional*):
+                If this is set, a prompt with the token(s) that indicate
+                the start of an assistant message will be appended to the formatted output. This is useful when you want to generate a response from the model.
+                Note that this argument will be passed to the chat template, and so it must be supported in the
+                template for this argument to have any effect.
+            continue_final_message (bool, *optional*):
+                If this is set, the chat will be formatted so that the final
+                message in the chat is open-ended, without any EOS tokens. The model will continue this message
+                rather than starting a new one. This allows you to "prefill" part of
+                the model's response for it. Cannot be used at the same time as `add_generation_prompt`.
+            tokenize (`bool`, defaults to `True`):
+                Whether to tokenize the output. If `False`, the output will be a string.
+            padding (`bool`, `str` or [`~utils.PaddingStrategy`], *optional*, defaults to `False`):
+                 Select a strategy to pad the returned sequences (according to the model's padding side and padding
+                 index) among:
+
+                - `True` or `'longest'`: Pad to the longest sequence in the batch (or no padding if only a single
+                  sequence if provided).
+                - `'max_length'`: Pad to a maximum length specified with the argument `max_length` or to the maximum
+                  acceptable input length for the model if that argument is not provided.
+                - `False` or `'do_not_pad'` (default): No padding (i.e., can output a batch with sequences of different
+                  lengths).
+            truncation (`bool`, defaults to `False`):
+                Whether to truncate sequences at the maximum length. Has no effect if tokenize is `False`.
+            max_length (`int`, *optional*):
+                Maximum length (in tokens) to use for padding or truncation. Has no effect if tokenize is `False`. If
+                not specified, the tokenizer's `max_length` attribute will be used as a default.
+            return_tensors (`str` or [`~utils.TensorType`], *optional*):
+                If set, will return tensors of a particular framework. Has no effect if tokenize is `False`. Acceptable
+                values are:
+                - `'tf'`: Return TensorFlow `tf.Tensor` objects.
+                - `'pt'`: Return PyTorch `torch.Tensor` objects.
+                - `'np'`: Return NumPy `np.ndarray` objects.
+                - `'jax'`: Return JAX `jnp.ndarray` objects.
+            return_dict (`bool`, defaults to `False`):
+                Whether to return a dictionary with named outputs. Has no effect if tokenize is `False`.
+            tokenizer_kwargs (`dict[str: Any]`, *optional*): Additional kwargs to pass to the tokenizer.
+            return_assistant_tokens_mask (`bool`, defaults to `False`):
+                Whether to return a mask of the assistant generated tokens. For tokens generated by the assistant,
+                the mask will contain 1. For user and system tokens, the mask will contain 0.
+                This functionality is only available for chat templates that support it via the `{% generation %}` keyword.
+            **kwargs: Additional kwargs to pass to the template renderer. Will be accessible by the chat template.
 
         Returns:
             `int` or `list[int]`: The token id or list of token ids.
@@ -1638,23 +1694,25 @@ class PreTrainedTokenizerBase(PushToHubMixin):
                     pass
                 vocab_files["tokenizer_file"] = fast_tokenizer_file
 
-            # This block looks for any extra chat template files
-            if is_local:
-                template_dir = Path(pretrained_model_name_or_path, CHAT_TEMPLATE_DIR)
-                if template_dir.is_dir():
-                    for template_file in template_dir.glob("*.jinja"):
-                        template_name = template_file.name.removesuffix(".jinja")
-                        vocab_files[f"chat_template_{template_name}"] = f"{CHAT_TEMPLATE_DIR}/{template_file.name}"
-            else:
-                for template in list_repo_templates(
-                    pretrained_model_name_or_path,
-                    local_files_only=local_files_only,
-                    revision=revision,
-                    cache_dir=cache_dir,
-                    token=token,
-                ):
-                    template = template.removesuffix(".jinja")
-                    vocab_files[f"chat_template_{template}"] = f"{CHAT_TEMPLATE_DIR}/{template}.jinja"
+                    # This block looks for any extra chat template files
+                    if is_local:
+                        template_dir = Path(pretrained_model_name_or_path, CHAT_TEMPLATE_DIR)
+                        if template_dir.is_dir():
+                            for template_file in template_dir.glob("*.jinja"):
+                                template_name = template_file.name.removesuffix(".jinja")
+                                vocab_files[f"chat_template_{template_name}"] = (
+                                    f"{CHAT_TEMPLATE_DIR}/{template_file.name}"
+                                )
+                    else:
+                        for template in list_repo_templates(
+                            pretrained_model_name_or_path,
+                            local_files_only=local_files_only,
+                            revision=revision,
+                            cache_dir=cache_dir,
+                            token=token,
+                        ):
+                            template = template.removesuffix(".jinja")
+                            vocab_files[f"chat_template_{template}"] = f"{CHAT_TEMPLATE_DIR}/{template}.jinja"
 
         remote_files = []
         if not is_local and not local_files_only:
@@ -1771,7 +1829,7 @@ class PreTrainedTokenizerBase(PushToHubMixin):
             if template_file is None:
                 continue  # I think this should never happen, but just in case
             template_name = extra_chat_template.removeprefix("chat_template_")
-            with open(template_file) as chat_template_handle:
+            with open(template_file, encoding="utf8") as chat_template_handle:
                 chat_templates[template_name] = chat_template_handle.read()
         if len(chat_templates) == 1 and "default" in chat_templates:
             init_kwargs["chat_template"] = chat_templates["default"]
@@ -1919,6 +1977,136 @@ class PreTrainedTokenizerBase(PushToHubMixin):
                 "Unable to load vocabulary from file. "
                 "Please check that the provided vocabulary is accessible and not corrupted."
             )
+
+        if added_tokens_decoder != {} and max(list(added_tokens_decoder.keys())[-1], 0) > tokenizer.vocab_size:
+            logger.info(
+                "Special tokens have been added in the vocabulary, make sure the associated word embeddings are"
+                " fine-tuned or trained."
+            )
+        try:
+            vocab_size = tokenizer.vocab_size
+        except NotImplementedError:
+            vocab_size = 0
+
+        # Optionally patches mistral tokenizers with wrong regex
+        if (
+            vocab_size > 100000
+            and hasattr(tokenizer, "_tokenizer")
+            and getattr(tokenizer._tokenizer, "pre_tokenizer", None) is not None
+        ):
+            tokenizer = cls._patch_mistral_regex(
+                tokenizer,
+                pretrained_model_name_or_path,
+                token=token,
+                cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                _commit_hash=_commit_hash,
+                _is_local=_is_local,
+                init_kwargs=init_kwargs,
+                fix_mistral_regex=kwargs.get("fix_mistral_regex"),
+            )
+
+        return tokenizer
+
+    @classmethod
+    def _patch_mistral_regex(
+        cls,
+        tokenizer,
+        pretrained_model_name_or_path,
+        token=None,
+        cache_dir=None,
+        local_files_only=False,
+        _commit_hash=None,
+        _is_local=False,
+        init_kwargs=None,
+        fix_mistral_regex=None,
+    ):
+        """
+        Patches mistral related tokenizers with incorrect regex if detected
+            1) Local file with an associated config saved next to it
+                >> Model type one of the mistral models (on older versions)
+            2) Remote models on the hub from official mistral models
+                >> Tags including `base_model:.*mistralai`
+        """
+        from huggingface_hub import model_info
+
+        def is_base_mistral(model_id: str) -> bool:
+            model = model_info(model_id)
+            if model.tags is not None:
+                if re.search("base_model:.*mistralai", "".join(model.tags)):
+                    return True
+            return False
+
+        if is_offline_mode():
+            _is_local = True
+
+        if pretrained_model_name_or_path is not None and (
+            _is_local or (not _is_local and is_base_mistral(pretrained_model_name_or_path))
+        ):
+            _config_file = cached_file(
+                pretrained_model_name_or_path,
+                "config.json",
+                cache_dir=cache_dir,
+                token=token,
+                local_files_only=local_files_only,
+                _raise_exceptions_for_missing_entries=False,
+                _raise_exceptions_for_connection_errors=False,
+                _commit_hash=_commit_hash,
+            )
+
+            # Detected using a (local) mistral tokenizer
+            mistral_config_detected = False
+            if _config_file is not None:
+                with open(_config_file, encoding="utf-8") as f:
+                    _config = json.load(f)
+                transformers_version = _config.get("transformers_version")
+                transformers_model_type = _config.get("model_type")
+
+                # Detect if we can skip the mistral fix by
+                #   a) having a non-mistral tokenizer
+                #   b) fixed version of transformers
+                if transformers_version and version.parse(transformers_version) <= version.parse("4.57.2"):
+                    if (
+                        _is_local
+                        and transformers_model_type is not None
+                        and transformers_model_type
+                        not in [
+                            "mistral",
+                            "mistral3",
+                            "voxtral",
+                            "ministral",
+                            "pixtral",
+                        ]
+                    ):
+                        return tokenizer
+                elif transformers_version and version.parse(transformers_version) >= version.parse("5.0.0"):
+                    return tokenizer
+
+                mistral_config_detected = True
+
+            if mistral_config_detected or (not _is_local and is_base_mistral(pretrained_model_name_or_path)):
+                # Expose the `fix_mistral_regex` flag on the tokenizer when provided, even if no correction is applied.
+                if init_kwargs and "fix_mistral_regex" in init_kwargs:
+                    setattr(tokenizer, "fix_mistral_regex", init_kwargs["fix_mistral_regex"])
+
+                # only warn if its not explicitly passed
+                if fix_mistral_regex is None and not getattr(tokenizer, "fix_mistral_regex", False):
+                    setattr(tokenizer, "fix_mistral_regex", False)
+                    logger.warning(
+                        f"The tokenizer you are loading from '{pretrained_model_name_or_path}'"
+                        f" with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e."
+                        " This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue."
+                    )
+                elif fix_mistral_regex is True or getattr(tokenizer, "fix_mistral_regex", False):
+                    setattr(tokenizer, "fix_mistral_regex", True)
+                    import tokenizers
+
+                    tokenizer.backend_tokenizer.pre_tokenizer[0] = tokenizers.pre_tokenizers.Split(
+                        pattern=tokenizers.Regex(
+                            r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+"
+                        ),
+                        behavior="isolated",
+                    )
         return tokenizer
 
     @classmethod
@@ -2104,10 +2292,10 @@ class PreTrainedTokenizerBase(PushToHubMixin):
 
     def _save_pretrained(
         self,
-        save_directory: str | os.PathLike,
+        save_directory: Union[str, os.PathLike],
         file_names: tuple[str, ...],
-        legacy_format: bool | None = None,
-        filename_prefix: str | None = None,
+        legacy_format: Optional[bool] = None,
+        filename_prefix: Optional[str] = None,
     ) -> tuple[str, ...]:
         """
         Save a tokenizer using the slow-tokenizer/legacy format: vocabulary + added tokens.
@@ -2137,7 +2325,7 @@ class PreTrainedTokenizerBase(PushToHubMixin):
 
         return file_names + vocab_files + (added_tokens_file,)
 
-    def save_vocabulary(self, save_directory: str, filename_prefix: str | None = None) -> tuple[str, ...]:
+    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> tuple[str, ...]:
         """
         Save only the vocabulary of the tokenizer (vocabulary + added tokens).
 
@@ -2853,9 +3041,48 @@ class PreTrainedTokenizerBase(PushToHubMixin):
         Returns:
             `list[str]`: The list of decoded sentences.
         """
-        # Forward to decode() which now handles batched input natively
-        result = self.decode(
-            token_ids=sequences,
+        return [
+            self.decode(
+                seq,
+                skip_special_tokens=skip_special_tokens,
+                clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                **kwargs,
+            )
+            for seq in sequences
+        ]
+
+    def decode(
+        self,
+        token_ids: Union[int, list[int], np.ndarray, "torch.Tensor"],
+        skip_special_tokens: bool = False,
+        clean_up_tokenization_spaces: Optional[bool] = None,
+        **kwargs,
+    ) -> str:
+        """
+        Converts a sequence of ids in a string, using the tokenizer and vocabulary with options to remove special
+        tokens and clean up tokenization spaces.
+
+        Similar to doing `self.convert_tokens_to_string(self.convert_ids_to_tokens(token_ids))`.
+
+        Args:
+            token_ids (`Union[int, list[int], np.ndarray, torch.Tensor, tf.Tensor]`):
+                List of tokenized input ids. Can be obtained using the `__call__` method.
+            skip_special_tokens (`bool`, *optional*, defaults to `False`):
+                Whether or not to remove special tokens in the decoding.
+            clean_up_tokenization_spaces (`bool`, *optional*):
+                Whether or not to clean up the tokenization spaces. If `None`, will default to
+                `self.clean_up_tokenization_spaces`.
+            kwargs (additional keyword arguments, *optional*):
+                Will be passed to the underlying model specific decode method.
+
+        Returns:
+            `str`: The decoded sentence.
+        """
+        # Convert inputs to python lists
+        token_ids = to_py_obj(token_ids)
+
+        return self._decode(
+            token_ids=token_ids,
             skip_special_tokens=skip_special_tokens,
             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
             **kwargs,

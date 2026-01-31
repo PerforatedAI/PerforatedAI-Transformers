@@ -422,8 +422,7 @@ print(tokenizer.decode(output[0], skip_special_tokens=True))
 ### Per Module Quantization
 
 #### 1. Skip quantization for certain layers
-
-With `FqnToConfig` we can specify a default configuration for all layers while skipping quantization for certain layers.
+With `ModuleFqnToConfig` we can specify a default configuration for all layers while skipping quantization for certain layers.
 
 ```py
 import torch
@@ -452,7 +451,7 @@ output_text = tokenizer.batch_decode(
 print(output_text)
 ```
 
-#### 2. Quantizing different layers with different quantization configs (no regex)
+#### 2. Quantizing different layers with different quantization configs
 
 ```py
 import torch
@@ -660,12 +659,6 @@ USER_ID = "your_huggingface_user_id"
 REPO_ID = "llama3-8b-int4wo-128"
 quantized_model.push_to_hub(f"{USER_ID}/llama3-8b-int4wo-128")
 tokenizer.push_to_hub(f"{USER_ID}/llama3-8b-int4wo-128")
-```
-
-```py
-# torchao < 0.15 -> unsafe serialization
-filename = "llama3-8b-int4wo-128/pytorch_model.bin"
-torch.save(quantized_model.state_dict(), filename)
 ```
 
 </hfoption>

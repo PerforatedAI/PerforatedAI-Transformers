@@ -125,7 +125,7 @@ _deps = [
     "rhoknp>=1.1.0,<1.3.1",
     "rjieba",
     "rouge-score!=0.0.7,!=0.0.8,!=0.1,!=0.1.1",
-    "ruff==0.14.10",
+    "ruff==0.13.1",
     # `sacrebleu` not used in `transformers`. However, it is needed in several tests, when a test calls
     # `evaluate.load("sacrebleu")`. This metric is used in the examples that we use to test the `Trainer` with, in the
     # `Trainer` tests (see references to `run_translation.py`).
@@ -322,32 +322,213 @@ if __name__ == "__main__":
     for minor in range(min_version, max_version + 1):
         python_classifiers.append(f"Programming Language :: Python :: 3.{minor}")
 
-    setup(
-        name="transformers",
-        version="5.0.1.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
-        author="The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/transformers/graphs/contributors)",
-        author_email="transformers@huggingface.co",
-        description="Transformers: the model-definition framework for state-of-the-art machine learning models in text, vision, audio, and multimodal models, for both inference and training.",
-        long_description=open("README.md", "r", encoding="utf-8").read(),
-        long_description_content_type="text/markdown",
-        keywords="machine-learning nlp python pytorch transformer llm vlm deep-learning inference training model-hub pretrained-models llama gemma qwen",
-        license="Apache 2.0 License",
-        url="https://github.com/huggingface/transformers",
-        package_dir={"": "src"},
-        packages=find_packages("src"),
-        include_package_data=True,
-        package_data={"": ["**/*.cu", "**/*.cpp", "**/*.cuh", "**/*.h", "**/*.pyx", "py.typed"]},
-        zip_safe=False,
-        extras_require=extras,
-        entry_points={"console_scripts": ["transformers=transformers.cli.transformers:main"]},
-        python_requires=python_requires,
-        install_requires=list(install_requires),
-        classifiers=[
-            "Development Status :: 5 - Production/Stable",
-            "Intended Audience :: Developers",
-            "Intended Audience :: Education",
-            "Intended Audience :: Science/Research",
-            "Operating System :: OS Independent",
+extras["tf"] = deps_list("tensorflow", "onnxconverter-common", "tf2onnx", "tensorflow-text", "keras-nlp")
+extras["tf-cpu"] = deps_list(
+    "keras",
+    "tensorflow-cpu",
+    "onnxconverter-common",
+    "tf2onnx",
+    "tensorflow-text",
+    "keras-nlp",
+    "tensorflow-probability",
+)
+
+extras["torch"] = deps_list("torch", "accelerate")
+extras["accelerate"] = deps_list("accelerate")
+extras["hf_xet"] = deps_list("hf_xet")
+
+if os.name == "nt":  # windows
+    extras["retrieval"] = deps_list("datasets")  # faiss is not supported on windows
+    extras["flax"] = []  # jax is not supported on windows
+else:
+    extras["retrieval"] = deps_list("faiss-cpu", "datasets")
+    extras["flax"] = deps_list("jax", "jaxlib", "flax", "optax", "scipy")
+
+extras["tokenizers"] = deps_list("tokenizers")
+extras["ftfy"] = deps_list("ftfy")
+extras["onnxruntime"] = deps_list("onnxruntime", "onnxruntime-tools")
+extras["onnx"] = deps_list("onnxconverter-common", "tf2onnx") + extras["onnxruntime"]
+extras["modelcreation"] = deps_list("cookiecutter")
+
+extras["sagemaker"] = deps_list("sagemaker")
+extras["deepspeed"] = deps_list("deepspeed") + extras["accelerate"]
+extras["optuna"] = deps_list("optuna")
+extras["ray"] = deps_list("ray[tune]")
+extras["sigopt"] = deps_list("sigopt")
+extras["hub-kernels"] = deps_list("kernels")
+
+extras["integrations"] = extras["hub-kernels"] + extras["optuna"] + extras["ray"]
+
+extras["serving"] = deps_list("openai", "pydantic", "uvicorn", "fastapi", "starlette") + extras["torch"]
+extras["audio"] = deps_list(
+    "librosa",
+    "pyctcdecode",
+    "phonemizer",
+    "kenlm",
+)
+# `pip install ".[speech]"` is deprecated and `pip install ".[torch-speech]"` should be used instead
+extras["speech"] = deps_list("torchaudio") + extras["audio"]
+extras["torch-speech"] = deps_list("torchaudio") + extras["audio"]
+extras["tf-speech"] = extras["audio"]
+extras["flax-speech"] = extras["audio"]
+extras["vision"] = deps_list("Pillow")
+extras["timm"] = deps_list("timm")
+extras["torch-vision"] = deps_list("torchvision") + extras["vision"]
+extras["natten"] = deps_list("natten")
+extras["codecarbon"] = deps_list("codecarbon")
+extras["video"] = deps_list("av")
+extras["num2words"] = deps_list("num2words")
+extras["sentencepiece"] = deps_list("sentencepiece", "protobuf")
+extras["tiktoken"] = deps_list("tiktoken", "blobfile")
+extras["mistral-common"] = deps_list("mistral-common[opencv]")
+extras["chat_template"] = deps_list("jinja2")
+extras["testing"] = (
+    deps_list(
+        "pytest",
+        "pytest-asyncio",
+        "pytest-rich",
+        "pytest-xdist",
+        "pytest-order",
+        "pytest-rerunfailures",
+        "timeout-decorator",
+        "parameterized",
+        "psutil",
+        "datasets",
+        "dill",
+        "evaluate",
+        "pytest-timeout",
+        "ruff",
+        "rouge-score",
+        "nltk",
+        "GitPython",
+        "sacremoses",
+        "rjieba",
+        "beautifulsoup4",
+        "tensorboard",
+        "pydantic",
+        "sentencepiece",
+        "sacrebleu",  # needed in trainer tests, see references to `run_translation.py`
+        "libcst",
+    )
+    + extras["retrieval"]
+    + extras["modelcreation"]
+    + extras["mistral-common"]
+    + extras["serving"]
+)
+
+extras["deepspeed-testing"] = extras["deepspeed"] + extras["testing"] + extras["optuna"] + extras["sentencepiece"]
+extras["ruff"] = deps_list("ruff")
+extras["quality"] = deps_list("datasets", "ruff", "GitPython", "urllib3", "libcst", "rich", "pandas")
+
+extras["all"] = (
+    extras["tf"]
+    + extras["torch"]
+    + extras["flax"]
+    + extras["sentencepiece"]
+    + extras["tokenizers"]
+    + extras["torch-speech"]
+    + extras["vision"]
+    + extras["integrations"]
+    + extras["timm"]
+    + extras["torch-vision"]
+    + extras["codecarbon"]
+    + extras["accelerate"]
+    + extras["video"]
+    + extras["num2words"]
+    + extras["mistral-common"]
+    + extras["chat_template"]
+)
+
+
+extras["dev-torch"] = (
+    extras["testing"]
+    + extras["torch"]
+    + extras["sentencepiece"]
+    + extras["tokenizers"]
+    + extras["torch-speech"]
+    + extras["vision"]
+    + extras["integrations"]
+    + extras["timm"]
+    + extras["torch-vision"]
+    + extras["codecarbon"]
+    + extras["quality"]
+    + extras["ja"]
+    + extras["sklearn"]
+    + extras["modelcreation"]
+    + extras["onnxruntime"]
+    + extras["num2words"]
+)
+extras["dev-tensorflow"] = (
+    extras["testing"]
+    + extras["tf"]
+    + extras["sentencepiece"]
+    + extras["tokenizers"]
+    + extras["vision"]
+    + extras["quality"]
+    + extras["sklearn"]
+    + extras["modelcreation"]
+    + extras["onnx"]
+    + extras["tf-speech"]
+)
+extras["dev"] = (
+    extras["all"] + extras["testing"] + extras["quality"] + extras["ja"] + extras["sklearn"] + extras["modelcreation"]
+)
+
+extras["torchhub"] = deps_list(
+    "filelock",
+    "huggingface-hub",
+    "importlib_metadata",
+    "numpy",
+    "packaging",
+    "protobuf",
+    "regex",
+    "requests",
+    "sentencepiece",
+    "torch",
+    "tokenizers",
+    "tqdm",
+)
+
+extras["benchmark"] = deps_list("optimum-benchmark")
+
+# OpenTelemetry dependencies for metrics collection in continuous batching
+extras["open-telemetry"] = deps_list("opentelemetry-api") + ["opentelemetry-exporter-otlp", "opentelemetry-sdk"]
+
+# when modifying the following list, make sure to update src/transformers/dependency_versions_check.py
+install_requires = [
+    deps["filelock"],  # filesystem locks, e.g., to prevent parallel downloads
+    deps["huggingface-hub"],
+    deps["numpy"],
+    deps["packaging"],  # utilities from PyPA to e.g., compare versions
+    deps["pyyaml"],  # used for the model cards metadata
+    deps["regex"],  # for OpenAI GPT
+    deps["requests"],  # for downloading models over HTTPS
+    deps["tokenizers"],
+    deps["safetensors"],
+    deps["tqdm"],  # progress bars in model download and training scripts
+]
+
+setup(
+    name="transformers",
+    version="4.57.5",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    author="The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/transformers/graphs/contributors)",
+    author_email="transformers@huggingface.co",
+    description="State-of-the-art Machine Learning for JAX, PyTorch and TensorFlow",
+    long_description=open("README.md", "r", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
+    keywords="NLP vision speech deep learning transformer pytorch tensorflow jax BERT GPT-2 Wav2Vec2 ViT",
+    license="Apache 2.0 License",
+    url="https://github.com/huggingface/transformers",
+    package_dir={"": "src"},
+    packages=find_packages("src"),
+    include_package_data=True,
+    package_data={"": ["**/*.cu", "**/*.cpp", "**/*.cuh", "**/*.h", "**/*.pyx", "py.typed"]},
+    zip_safe=False,
+    extras_require=extras,
+    entry_points={
+        "console_scripts": [
+            "transformers=transformers.commands.transformers_cli:main",
+            "transformers-cli=transformers.commands.transformers_cli:main_cli",
         ]
         + python_classifiers
         + [

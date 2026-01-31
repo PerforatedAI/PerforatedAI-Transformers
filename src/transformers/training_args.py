@@ -35,6 +35,8 @@ from .utils import (
     ACCELERATE_MIN_VERSION,
     ExplicitEnum,
     is_accelerate_available,
+    is_apex_available,
+    is_ipex_available,
     is_sagemaker_dp_enabled,
     is_sagemaker_mp_enabled,
     is_torch_available,
@@ -593,9 +595,9 @@ class TrainingArguments:
             instance of `Dataset`.
         report_to (`str` or `list[str]`, *optional*, defaults to `"none"`):
             The list of integrations to report the results and logs to. Supported platforms are `"azure_ml"`,
-            `"clearml"`, `"codecarbon"`, `"comet_ml"`, `"dagshub"`, `"dvclive"`, `"flyte"`, `"mlflow"`, `"swanlab"`,
-            `"tensorboard"`, `"trackio"` and `"wandb"`. Use `"all"` to report to all integrations installed, `"none"`
-            for no integrations.
+            `"clearml"`, `"codecarbon"`, `"comet_ml"`, `"dagshub"`, `"dvclive"`, `"flyte"`, `"mlflow"`, `"neptune"`,
+            `"swanlab"`, `"tensorboard"`, `"trackio"` and `"wandb"`. Use `"all"` to report to all integrations
+            installed, `"none"` for no integrations.
         project (`str`, *optional*, defaults to `"huggingface"`):
             The name of the project to use for logging. Currently, only used by Trackio.
         trackio_space_id (`str` or `None`, *optional*, defaults to `"trackio"`):
@@ -720,8 +722,15 @@ class TrainingArguments:
             Refer to the PyTorch doc for possible values and note that they may change across PyTorch versions.
 
             This flag is experimental and subject to change in future releases.
-        include_num_input_tokens_seen (`Optional[Union[str, bool]]`, *optional*, defaults to "no"):
-            Whether to track the number of input tokens seen. Must be one of ["all", "non_padding", "no"] or a boolean value which map to "all" or "no".
+        include_tokens_per_second (`bool`, *optional*, defaults to `False`):
+            Whether or not to compute the number of tokens per second per device for training speed metrics.
+
+            This will iterate over the entire training dataloader once beforehand,
+            and will slow down the entire process.
+
+        include_num_input_tokens_seen (`bool`, *optional*):
+            Whether or not to track the number of input tokens seen throughout training.
+
             May be slower in distributed training as gather operations must be called.
 
         neftune_noise_alpha (`Optional[float]`):
@@ -849,7 +858,7 @@ class TrainingArguments:
         default="linear",
         metadata={"help": "The scheduler type to use."},
     )
-    lr_scheduler_kwargs: dict | str | None = field(
+    lr_scheduler_kwargs: Optional[Union[dict, str]] = field(
         default=None,
         metadata={
             "help": (
@@ -941,8 +950,8 @@ class TrainingArguments:
             )
         },
     )
-    enable_jit_checkpoint: bool = field(
-        default=False,
+    save_safetensors: bool = field(
+        default=True,
         metadata={
             "help": (
                 "Whether to enable Just-In-Time (JIT) checkpointing on SIGTERM signal. "
@@ -1125,7 +1134,7 @@ class TrainingArguments:
             )
         },
     )
-    fsdp: list[FSDPOption] | str | None = field(
+    fsdp: Optional[Union[list[FSDPOption], str]] = field(
         default=None,
         metadata={
             "help": (
@@ -1198,7 +1207,7 @@ class TrainingArguments:
         default="huggingface",
         metadata={"help": "The name of the project to use for logging. Currenly, only used by Trackio."},
     )
-    trackio_space_id: str | None = field(
+    trackio_space_id: Optional[str] = field(
         default="trackio",
         metadata={
             "help": "The Hugging Face Space ID to deploy to when using Trackio. Should be a complete Space name like "
@@ -1208,7 +1217,7 @@ class TrainingArguments:
             "default is to create private Spaces."
         },
     )
-    ddp_find_unused_parameters: bool | None = field(
+    ddp_find_unused_parameters: Optional[bool] = field(
         default=None,
         metadata={
             "help": (
@@ -1345,8 +1354,14 @@ class TrainingArguments:
             "help": "Which mode to use with `torch.compile`, passing one will trigger a model compilation.",
         },
     )
-    include_num_input_tokens_seen: str | bool = field(
-        default="no",
+
+    include_tokens_per_second: bool = field(
+        default=False,
+        metadata={"help": "If set to `True`, the speed metrics will include `tgs` (tokens per second per device)."},
+    )
+
+    include_num_input_tokens_seen: Union[str, bool] = field(
+        default=False,
         metadata={
             "help": (
                 "Whether to track the number of input tokens seen. "
@@ -1522,6 +1537,14 @@ class TrainingArguments:
                         f"steps, but found {self.save_steps}, which is not a round multiple of {self.eval_steps}."
                     )
 
+        if not self.save_safetensors:
+            logger.info(
+                f"Found safetensors installation, but --save_safetensors={self.save_safetensors}. "
+                f"Safetensors should be a preferred weights saving format due to security and performance reasons. "
+                f"If your model cannot be saved by safetensors please feel free to open an issue at "
+                f"https://github.com/huggingface/safetensors!"
+            )
+
         if (
             self.load_best_model_at_end or self.lr_scheduler_type == SchedulerType.REDUCE_ON_PLATEAU
         ) and self.metric_for_best_model is None:
@@ -1601,7 +1624,30 @@ class TrainingArguments:
         if is_torch_available():
             self.device
 
-        if is_torch_available() and self.torch_compile:
+        if self.torchdynamo is not None:
+            warnings.warn(
+                "`torchdynamo` is deprecated and will be removed in version 5 of 🤗 Transformers. Use"
+                " `torch_compile_backend` instead",
+                FutureWarning,
+            )
+            self.torch_compile_backend = self.torchdynamo
+        if (self.torch_compile_mode is not None or self.torch_compile_backend is not None) and not self.torch_compile:
+            self.torch_compile = True
+        if self.torch_compile and self.torch_compile_backend is None:
+            if not self.use_cpu and is_torch_hpu_available():
+                self.torch_compile_backend = "hpu_backend"
+            else:
+                self.torch_compile_backend = "inductor"
+
+        # accelerate integration for torch compile
+        if self.torch_compile:
+            # set env vars for accelerate
+            prefix = "ACCELERATE_DYNAMO_"
+            os.environ[prefix + "BACKEND"] = self.torch_compile_backend
+            if self.torch_compile_mode is not None:
+                os.environ[prefix + "MODE"] = self.torch_compile_mode
+
+        if self.framework == "pt" and is_torch_available() and self.torch_compile:
             if is_torch_tf32_available():
                 if self.tf32 is None and not self.fp16 or self.bf16:
                     device_str = "MUSA" if is_torch_musa_available() else "CUDA"
@@ -1625,6 +1671,21 @@ class TrainingArguments:
                     enable_tf32(False)
                 # no need to assert on else
 
+        # if training args is specified, it will override the one specified in the accelerate config
+        mixed_precision_dtype = os.environ.get("ACCELERATE_MIXED_PRECISION", "no")
+        if self.fp16:
+            mixed_precision_dtype = "fp16"
+        elif self.bf16:
+            mixed_precision_dtype = "bf16"
+        os.environ["ACCELERATE_MIXED_PRECISION"] = mixed_precision_dtype
+
+        if self.report_to is None:
+            logger.info(
+                "The default value for the training argument `--report_to` will change in v5 (from all installed "
+                "integrations to none). In v5, you will need to use `--report_to all` to get the same behavior as "
+                "now. You should start updating your code and make this info disappear :-)."
+            )
+            self.report_to = "all"
         if self.report_to == "all" or self.report_to == ["all"]:
             # Import at runtime to avoid a circular import.
             from .integrations import get_available_reporting_integrations
@@ -1646,8 +1707,150 @@ class TrainingArguments:
             logger.warning("warmup_ratio is deprecated and will be removed in v5.2. Use `warmup_steps` instead.")
             self.warmup_steps = self.warmup_ratio
 
-        if self.warmup_steps < 0:
-            raise ValueError("warmup_steps must be an integer or a float")
+        if not isinstance(self.warmup_steps, int) or self.warmup_steps < 0:
+            raise ValueError("warmup_steps must be of type int and must be 0 or a positive integer.")
+
+        if self.fsdp is None:
+            self.fsdp = []
+        elif self.fsdp is True:
+            self.fsdp = [FSDPOption.FULL_SHARD]
+        elif isinstance(self.fsdp, str):
+            self.fsdp = [FSDPOption(s) for s in self.fsdp.split()]
+
+        if self.fsdp == [FSDPOption.OFFLOAD]:
+            raise ValueError(
+                "`--fsdp offload` can't work on its own. It needs to be added to `--fsdp full_shard` or "
+                '`--fsdp shard_grad_op`. For example, `--fsdp "full_shard offload"`.'
+            )
+        elif FSDPOption.FULL_SHARD in self.fsdp and FSDPOption.SHARD_GRAD_OP in self.fsdp:
+            raise ValueError("`--fsdp full_shard` is not compatible with `--fsdp shard_grad_op`.")
+
+        if self.gradient_checkpointing and (
+            FSDPOption.FULL_SHARD in self.fsdp or FSDPOption.HYBRID_SHARD in self.fsdp
+        ):
+            logger.warning(
+                "When using FSDP full shard, instead of using `gradient_checkpointing` in TrainingArguments, please"
+                " use `activation_checkpointing` in `fsdp_config`. The former introduces a redundant AllGather"
+                " operation in backward pass. Reference: https://github.com/huggingface/transformers/issues/30404"
+            )
+
+        if self.fsdp_config is None:
+            self.fsdp_config = {}
+
+        if isinstance(self.fsdp_config, str):
+            if len(self.fsdp) == 0:
+                warnings.warn("`--fsdp_config` is useful only when `--fsdp` is specified.")
+            with open(self.fsdp_config, encoding="utf-8") as f:
+                self.fsdp_config = json.load(f)
+
+        if self.fsdp_config is not None and isinstance(self.fsdp_config, dict):
+            for k in list(self.fsdp_config.keys()):
+                if k.startswith("fsdp_"):
+                    v = self.fsdp_config.pop(k)
+                    self.fsdp_config[k[5:]] = v
+
+        if self.fsdp_min_num_params > 0:
+            warnings.warn("using `--fsdp_min_num_params` is deprecated. Use fsdp_config instead ", FutureWarning)
+
+        self.fsdp_config["min_num_params"] = max(self.fsdp_config.get("min_num_params", 0), self.fsdp_min_num_params)
+
+        # if fsdp_config["transformer_layer_cls_to_wrap"] is specified as a string, convert it to a list with a single object
+        if isinstance(self.fsdp_config.get("transformer_layer_cls_to_wrap", None), str):
+            self.fsdp_config["transformer_layer_cls_to_wrap"] = [self.fsdp_config["transformer_layer_cls_to_wrap"]]
+
+        if self.fsdp_transformer_layer_cls_to_wrap is not None:
+            warnings.warn(
+                "using `--fsdp_transformer_layer_cls_to_wrap` is deprecated. Use fsdp_config instead ", FutureWarning
+            )
+            self.fsdp_config["transformer_layer_cls_to_wrap"] = self.fsdp_config.get(
+                "transformer_layer_cls_to_wrap", []
+            ) + [self.fsdp_transformer_layer_cls_to_wrap]
+
+        if len(self.fsdp) == 0 and self.fsdp_config["min_num_params"] > 0:
+            warnings.warn("`min_num_params` is useful only when `--fsdp` is specified.")
+
+        if len(self.fsdp) == 0 and self.fsdp_config.get("transformer_layer_cls_to_wrap", None) is not None:
+            warnings.warn("`transformer_layer_cls_to_wrap` is useful only when `--fsdp` is specified.")
+
+        if (
+            len(self.fsdp) > 0
+            and self.fsdp_config["min_num_params"] > 0
+            and self.fsdp_config.get("transformer_layer_cls_to_wrap", None) is not None
+        ):
+            raise ValueError("`min_num_params` and `transformer_layer_cls_to_wrap` are mutually exclusive.")
+        self.fsdp_config["xla"] = self.fsdp_config.get("xla", False)
+        self.fsdp_config["xla_fsdp_v2"] = self.fsdp_config.get("xla_fsdp_v2", False)
+        self.fsdp_config["xla_fsdp_grad_ckpt"] = self.fsdp_config.get("xla_fsdp_grad_ckpt", False)
+        if self.fsdp_config["xla"]:
+            if len(self.fsdp) > 0:
+                # store XLA fsdp configuration parameters into a dictionary
+                # Copy the config to avoid modifying the original config (which may be used for JSON serialization)
+                self.xla_fsdp_config = self.fsdp_config.get("xla_fsdp_settings", {}).copy()
+                # apply appropriate string to torch.dtype conversions for parameters
+                if "compute_dtype" in self.xla_fsdp_config:
+                    self.xla_fsdp_config["compute_dtype"] = getattr(torch, self.xla_fsdp_config["compute_dtype"])
+                if "buffer_dtype" in self.xla_fsdp_config:
+                    self.xla_fsdp_config["buffer_dtype"] = getattr(torch, self.xla_fsdp_config["buffer_dtype"])
+            else:
+                warnings.warn("XLA FSDP can be used only when `--fsdp` is specified.")
+        else:
+            if self.fsdp_config["xla_fsdp_grad_ckpt"]:
+                warnings.warn("`--xla_fsdp_grad_ckpt` is useful only when `--xla` is set to true.")
+
+        # accelerate integration for FSDP
+        if len(self.fsdp) > 0 and not self.fsdp_config["xla"]:
+            os.environ["ACCELERATE_USE_FSDP"] = "true"
+            from accelerate.utils.constants import (
+                FSDP_AUTO_WRAP_POLICY,
+                FSDP_SHARDING_STRATEGY,
+            )
+
+            prefix = "FSDP_"
+            for fsdp_option in self.fsdp:
+                if fsdp_option.upper() in FSDP_SHARDING_STRATEGY:
+                    # set environment variable for FSDP sharding strategy
+                    os.environ[f"{prefix}SHARDING_STRATEGY"] = str(
+                        FSDP_SHARDING_STRATEGY.index(fsdp_option.upper()) + 1
+                    )
+                elif fsdp_option == FSDPOption.OFFLOAD:
+                    os.environ[f"{prefix}OFFLOAD_PARAMS"] = "true"
+                elif fsdp_option == FSDPOption.AUTO_WRAP:
+                    os.environ[f"{prefix}AUTO_WRAP_POLICY"] = FSDP_AUTO_WRAP_POLICY[0]
+                    if self.fsdp_config["min_num_params"] > 0:
+                        os.environ[f"{prefix}MIN_NUM_PARAMS"] = str(self.fsdp_config["min_num_params"])
+                        os.environ[f"{prefix}AUTO_WRAP_POLICY"] = FSDP_AUTO_WRAP_POLICY[1]
+                    elif self.fsdp_config.get("transformer_layer_cls_to_wrap", None) is not None:
+                        os.environ[f"{prefix}TRANSFORMER_CLS_TO_WRAP"] = ",".join(
+                            self.fsdp_config["transformer_layer_cls_to_wrap"]
+                        )
+            prefetch_policy = self.fsdp_config.get("backward_prefetch", "NO_PREFETCH")
+            os.environ[f"{prefix}BACKWARD_PREFETCH"] = prefetch_policy.upper()
+            os.environ[f"{prefix}FORWARD_PREFETCH"] = str(self.fsdp_config.get("forward_prefetch", "false")).lower()
+
+            sync_module_states = str(self.fsdp_config.get("sync_module_states", "true")).lower()
+            cpu_ram_efficient_loading = str(self.fsdp_config.get("cpu_ram_efficient_loading", "false")).lower()
+
+            if sync_module_states == "false" and cpu_ram_efficient_loading == "true":
+                # In this case, all the processes except the main process would have random weights leading
+                # to unexpected behaviour during training, thus throwing error here to prevent it.
+                raise ValueError('`sync_module_states` must be `"True"` if `cpu_ram_efficient_loading` is `"True"`')
+
+            os.environ[f"{prefix}SYNC_MODULE_STATES"] = sync_module_states
+            os.environ[f"{prefix}CPU_RAM_EFFICIENT_LOADING"] = cpu_ram_efficient_loading
+
+            os.environ[f"{prefix}USE_ORIG_PARAMS"] = str(self.fsdp_config.get("use_orig_params", "true")).lower()
+
+        if self.tpu_metrics_debug:
+            warnings.warn(
+                "using `--tpu_metrics_debug` is deprecated and will be removed in version 5 of 🤗 Transformers. Use"
+                " `--debug tpu_metrics_debug` instead",
+                FutureWarning,
+            )
+            if self.debug is None:
+                self.debug = " tpu_metrics_debug"
+            else:
+                self.debug += " tpu_metrics_debug"
+            self.tpu_metrics_debug = False
 
         if isinstance(self.debug, str):
             self.debug = [DebugOption(s) for s in self.debug.split()]

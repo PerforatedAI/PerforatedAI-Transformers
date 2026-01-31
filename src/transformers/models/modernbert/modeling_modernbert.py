@@ -504,7 +504,63 @@ class ModernBertModel(ModernBertPreTrainedModel):
 
         hidden_states = self.final_norm(hidden_states)
 
-        return BaseModelOutput(last_hidden_state=hidden_states)
+        if repad:
+            hidden_states = _pad_modernbert_output(
+                inputs=hidden_states, indices=indices, batch=batch_size, seqlen=seq_len
+            )
+            if all_hidden_states is not None:
+                all_hidden_states = tuple(
+                    _pad_modernbert_output(inputs=hs, indices=indices, batch=batch_size, seqlen=seq_len)
+                    for hs in all_hidden_states
+                )
+        # If the attention implementation is FA2 and there is no need for repadding, there might still be the batch
+        # dimension missing
+        elif (
+            self.config._attn_implementation == "flash_attention_2"
+            and all_hidden_states is not None
+            and all_hidden_states[-1].dim() == 2
+        ):
+            hidden_states = hidden_states.unsqueeze(0)
+            all_hidden_states = tuple(hs.unsqueeze(0) for hs in all_hidden_states)
+
+        if not return_dict:
+            return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+        return BaseModelOutput(
+            last_hidden_state=hidden_states,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attentions,
+        )
+
+    def _update_attention_mask(self, attention_mask: torch.Tensor, output_attentions: bool) -> torch.Tensor:
+        if output_attentions:
+            if self.config._attn_implementation == "sdpa":
+                logger.warning_once(
+                    "Outputting attentions is only supported with the 'eager' attention implementation, "
+                    'not with "sdpa". Falling back to `attn_implementation="eager"`.'
+                )
+                self.config._attn_implementation = "eager"
+            elif self.config._attn_implementation != "eager":
+                logger.warning_once(
+                    "Outputting attentions is only supported with the eager attention implementation, "
+                    f'not with {self.config._attn_implementation}. Consider setting `attn_implementation="eager"`.'
+                    " Setting `output_attentions=False`."
+                )
+
+        global_attention_mask = _prepare_4d_attention_mask(attention_mask, self.dtype)
+
+        # Create position indices
+        rows = torch.arange(global_attention_mask.shape[2]).unsqueeze(0)
+        # Calculate distance between positions
+        distance = torch.abs(rows - rows.T)
+
+        # Create sliding window mask (1 for positions within window, 0 outside)
+        window_mask = (
+            (distance <= self.config.local_attention // 2).unsqueeze(0).unsqueeze(0).to(attention_mask.device)
+        )
+        # Combine with existing mask
+        sliding_window_mask = global_attention_mask.masked_fill(window_mask.logical_not(), torch.finfo(self.dtype).min)
+
+        return global_attention_mask, sliding_window_mask
 
 
 class ModernBertPredictionHead(nn.Module):
@@ -581,6 +637,25 @@ class ModernBertForMaskedLM(ModernBertPreTrainedModel):
         loss = None
         if labels is not None:
             loss = self.loss_function(logits, labels, vocab_size=self.config.vocab_size, **kwargs)
+
+        if self.config._attn_implementation == "flash_attention_2":
+            # Logits padding
+            with nullcontext() if self.config.repad_logits_with_grad or labels is None else torch.no_grad():
+                logits = _pad_modernbert_output(inputs=logits, indices=indices, batch=batch_size, seqlen=seq_len)
+            # Hidden states padding
+            if getattr(outputs, "hidden_states", None) is not None:
+                padded_hidden_states = []
+                for hs in outputs.hidden_states:
+                    if hs.dim() == 3 and hs.shape[0] == 1:
+                        hs = hs.squeeze(0)
+                    padded_hidden_states.append(
+                        _pad_modernbert_output(inputs=hs, indices=indices, batch=batch_size, seqlen=seq_len)
+                    )
+                outputs.hidden_states = tuple(padded_hidden_states)
+
+        if not return_dict:
+            output = (logits,)
+            return ((loss,) + output) if loss is not None else output
 
         return MaskedLMOutput(
             loss=loss,

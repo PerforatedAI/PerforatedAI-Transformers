@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ..utils.logging import tqdm
 from .base import HfQuantizer
@@ -76,39 +76,37 @@ class HiggsHfQuantizer(HfQuantizer):
 
         return dtype
 
-    # TODO: to remove
-    # Kept here in case we see some interest in adding support for it
-    # def create_quantized_param(
-    #     self,
-    #     model: "PreTrainedModel",
-    #     param_value: "torch.Tensor",
-    #     param_name: str,
-    #     target_device: "torch.device",
-    #     **kwargs,
-    # ):
-    #     from ..integrations import quantize_with_higgs
+    def create_quantized_param(
+        self,
+        model: "PreTrainedModel",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        **kwargs,
+    ):
+        from ..integrations import quantize_with_higgs
 
-    #     flute_dict = quantize_with_higgs(
-    #         param_value.to(target_device),
-    #         self.quantization_config.bits,
-    #         self.quantization_config.p,
-    #         self.quantization_config.group_size,
-    #         self.quantization_config.hadamard_size,
-    #     )
-    #     del param_value
+        flute_dict = quantize_with_higgs(
+            param_value.to(target_device),
+            self.quantization_config.bits,
+            self.quantization_config.p,
+            self.quantization_config.group_size,
+            self.quantization_config.hadamard_size,
+        )
+        del param_value
 
-    #     module, _ = get_module_from_name(model, param_name)
-    #     module_name = ".".join(param_name.split(".")[:-1])
-    #     for key, value in flute_dict.items():
-    #         if key in module._parameters:
-    #             module._parameters[key] = torch.nn.Parameter(value, requires_grad=False)
-    #         elif key in module._buffers:
-    #             module._buffers[key] = torch.nn.Buffer(value)
-    #         elif key == "tune_metadata":
-    #             module.tune_metadata = value
-    #             self.quantization_config.tune_metadata[module_name] = value.to_dict()
-    #         else:
-    #             raise ValueError(f"Unexpected key {key} in module {module}")
+        module, _ = get_module_from_name(model, param_name)
+        module_name = ".".join(param_name.split(".")[:-1])
+        for key, value in flute_dict.items():
+            if key in module._parameters:
+                module._parameters[key] = torch.nn.Parameter(value, requires_grad=False)
+            elif key in module._buffers:
+                module._buffers[key] = torch.nn.Buffer(value)
+            elif key == "tune_metadata":
+                module.tune_metadata = value
+                self.quantization_config.tune_metadata[module_name] = value.to_dict()
+            else:
+                raise ValueError(f"Unexpected key {key} in module {module}")
 
     def _process_model_before_weight_loading(
         self,

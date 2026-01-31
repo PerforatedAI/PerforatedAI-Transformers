@@ -44,10 +44,10 @@ The most common method is *affine quantization*. For a given float32 tensor (lik
 
 There are two main ways to perform this mapping, *symmetric* and *asymmetric*. The choice between symmetric and asymmetric quantization determines how the float32 range is mapped to the int8 range.
 
-- Symmetric: This method assumes the original float32 range is symmetric around zero ( $[ -a, a ]$ ). This range is mapped symmetrically to the int8 range, for example, $[-127, 127]$. A key characteristic is that the float32 value $0.0$ maps directly to the int8 value $0$. This only requires one parameter, the **scale ( $S$ )**, to define the mapping. It can simplify computations, but it might be less accurate if the original data distribution isn't naturally centered around zero.
-- Asymmetric (Affine): This method does not assume the data is centered around zero. It maps the exact range $[val_{min}, val_{max}]$ from float32 to the full int8 range, like $[-128, 127]$. This requires two parameters, a **scale ( $S$ )** and a **zero-point ( $Z$ )**.
+- Symmetric: This method assumes the original float32 range is symmetric around zero ( \\([ -a, a ]\\) ). This range is mapped symmetrically to the int8 range, for example, \\([-127, 127]\\). A key characteristic is that the float32 value \\(0.0\\) maps directly to the int8 value \\(0\\). This only requires one parameter, the **scale ( \\(S\\) )**, to define the mapping. It can simplify computations, but it might be less accurate if the original data distribution isn't naturally centered around zero.
+- Asymmetric (Affine): This method does not assume the data is centered around zero. It maps the exact range \\([val_{min}, val_{max}]\\) from float32 to the full int8 range, like \\([-128, 127]\\). This requires two parameters, a **scale ( \\(S\\) )** and a **zero-point ( \\(Z\\) )**.
 
-    scale ( $S$ ): A positive float32 number representing the ratio between the float32 and the int8 range.
+    scale ( \\(S\\) ): A positive float32 number representing the ratio between the float32 and the int8 range.
 
 $$
 S = \frac{val_{max} - val_{min}}{q_{max} - q_{min}}

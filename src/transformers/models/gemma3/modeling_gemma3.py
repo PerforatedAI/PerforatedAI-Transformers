@@ -467,20 +467,10 @@ class Gemma3PreTrainedModel(PreTrainedModel):
     def _init_weights(self, module):
         super()._init_weights(module)
         if isinstance(module, Gemma3MultiModalProjector):
-            init.zeros_(module.mm_input_projection_weight)
+            module.mm_input_projection_weight.data.zero_()
         # We initialize with 0s to be 1 centered as the RMSNorm here does (1 + weight)
         elif "RMSNorm" in module.__class__.__name__:
-            init.zeros_(module.weight)
-        elif isinstance(module, Gemma3TextScaledWordEmbedding):
-            init.constant_(module.embed_scale, module.scalar_embed_scale)
-        elif isinstance(module, Gemma3RotaryEmbedding):
-            for layer_type in module.layer_types:
-                rope_init_fn = module.compute_default_rope_parameters
-                if module.rope_type[layer_type] != "default":
-                    rope_init_fn = ROPE_INIT_FUNCTIONS[module.rope_type[layer_type]]
-                curr_inv_freq, _ = rope_init_fn(module.config, layer_type=layer_type)
-                init.copy_(getattr(module, f"{layer_type}_inv_freq"), curr_inv_freq)
-                init.copy_(getattr(module, f"{layer_type}_original_inv_freq"), curr_inv_freq)
+            module.weight.data.zero_()
 
 
 def _bidirectional_window_overlay(sliding_window: int) -> Callable[[int, int, int, int], bool]:

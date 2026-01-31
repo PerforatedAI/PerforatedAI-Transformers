@@ -32,8 +32,14 @@ from transformers.generation.continuous_batching.requests import logger
 def generate_without_cb(
     model_id: str, sliding_window: int, attn_impl: str, batched_inputs: list[int], generation_config: GenerationConfig
 ) -> dict[str, str]:
-    # Setup model and tokenizer
-    model = AutoModelForCausalLM.from_pretrained(model_id, dtype=torch.bfloat16, attn_implementation=attn_impl)
+    attn_impl = {
+        "sdpa_paged": "sdpa",
+        "eager_paged": "eager",
+        "paged_attention": "eager",  # TODO: this does not work on AMD docker
+        "flash_paged": "flash_attention_2",  # TODO: this does not work on AMD docker
+    }[attn_impl]
+
+    model = AutoModelForCausalLM.from_pretrained(MODEL_ID, dtype=torch.bfloat16, attn_implementation=attn_impl)
     model = model.cuda().eval()
     if sliding_window > 0 and getattr(model.config, "sliding_window", None) is not None:
         model.config.sliding_window = sliding_window

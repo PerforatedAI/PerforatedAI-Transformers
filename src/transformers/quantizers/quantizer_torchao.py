@@ -13,7 +13,9 @@
 # limitations under the License.
 import importlib
 import re
-from typing import TYPE_CHECKING
+import types
+from collections import defaultdict
+from typing import TYPE_CHECKING, Optional, Union
 
 from packaging import version
 
@@ -30,10 +32,6 @@ from ..utils import is_torch_available, is_torchao_available, logging
 
 
 if is_torch_available():
-    from ..core_model_loading import WeightConverter
-
-
-if is_torch_available():
     import torch
 
 if is_torchao_available():
@@ -41,6 +39,17 @@ if is_torchao_available():
         from torchao.prototype.safetensors.safetensors_support import (
             flatten_tensor_state_dict,
         )
+
+
+if is_torchao_available():
+    import torchao
+
+    if version.parse(importlib.metadata.version("torchao")) >= version.parse("0.14.0"):
+        from torchao.prototype.safetensors.safetensors_support import (
+            flatten_tensor_state_dict,
+            unflatten_tensor_state_dict,
+        )
+        from torchao.prototype.safetensors.safetensors_utils import is_metadata_torchao
 
 
 logger = logging.get_logger(__name__)
@@ -81,6 +90,11 @@ def _linear_extra_repr(self):
 
 
 if is_torchao_available():
+    SUPPORTED_SAFE_SERIALIZATION_CONFIGS = [
+        torchao.quantization.Float8WeightOnlyConfig,
+        torchao.quantization.Float8DynamicActivationFloat8WeightConfig,
+    ]
+
     TORCHAO_VERSION = version.parse(importlib.metadata.version("torchao"))
 
 
@@ -94,19 +108,19 @@ class TorchAoHfQuantizer(HfQuantizer):
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
 
-        self.quantized_param_size = None
-        quant_type = self.quantization_config.quant_type
-        if isinstance(quant_type, str):
-            map_to_param_size = {
-                "int4_weight_only": 0.5,
-                "int8_weight_only": 1,
-                "int8_dynamic_activation_int8_weight": 1,
-            }
-            if quant_type in map_to_param_size:
-                self.quantized_param_size = map_to_param_size[quant_type]
+        if isinstance(self.quantization_config.quant_type, str):
+            is_int_4 = "int4" in self.quantization_config.quant_type
         else:
-            size_digit = fuzzy_match_size(quant_type.__class__.__name__)
-            self.quantized_param_size = 0.5 if size_digit == "4" else 1
+            config_name = self.quantization_config.quant_type.__class__.__name__
+            is_int_4 = fuzzy_match_size(config_name) == "4"
+
+        # TODO: better way to get the serialized key names? Hard to read from torchao codebase
+        if is_int_4:
+            self.weight_ao_keys = ["qdata", "scale", "zero_point"]
+        else:
+            self.weight_ao_keys = ["qdata", "scale"]
+        # Instead of serializing the simple torch.Tensor like usual, torchao adds a `:_data` suffix so we need this
+        self.full_ao_keys = self.weight_ao_keys + ["_data"]
 
     def validate_environment(self, *args, **kwargs):
         if not is_torchao_available():
@@ -141,12 +155,50 @@ class TorchAoHfQuantizer(HfQuantizer):
                 dtype = torch.bfloat16
         return dtype
 
-    def get_state_dict_and_metadata(self, model):
+    def get_state_dict_and_metadata(self, model, safe_serialization: Optional[bool] = False):
         """
-        We flatten the state dict of tensor subclasses so that it is compatible with the safetensors format.
+        If the model is safe serializable, we flatten the state dict of tensor subclasses so that it is compatible with
+        the safetensors format.
         """
-        if version.parse("0.15.0") <= TORCHAO_VERSION:
-            return flatten_tensor_state_dict(model.state_dict())
+        if type(self.quantization_config.quant_type) in SUPPORTED_SAFE_SERIALIZATION_CONFIGS and safe_serialization:
+            if TORCHAO_VERSION >= version.parse("0.14.0"):
+                return flatten_tensor_state_dict(model.state_dict())
+            else:
+                raise RuntimeError(
+                    f"In order to use safetensors with torchao, please use torchao version >= 0.14.0. Current version: {TORCHAO_VERSION}"
+                )
+        else:
+            return None, {}
+
+    def adjust_target_dtype(self, dtype: "torch.dtype") -> "torch.dtype":
+        if version.parse(importlib.metadata.version("accelerate")) > version.parse("0.19.0"):
+            from accelerate.utils import CustomDtype
+
+            # Import AOBaseConfig directly since we know we have the right version
+            if self.quantization_config._get_ao_version() > version.Version("0.9.0"):
+                from torchao.core.config import AOBaseConfig
+
+                quant_type = self.quantization_config.quant_type
+                if isinstance(quant_type, AOBaseConfig):
+                    # Extract size digit using fuzzy match on the class name
+                    config_name = quant_type.__class__.__name__
+                    size_digit = fuzzy_match_size(config_name)
+
+                    # Map the extracted digit to appropriate dtype
+                    if size_digit == "4":
+                        return CustomDtype.INT4
+                    else:
+                        # Default to int8
+                        return torch.int8
+
+            # Original mapping for non-AOBaseConfig types
+            map_to_target_dtype = {
+                "int4_weight_only": CustomDtype.INT4,
+                "int8_weight_only": torch.int8,
+                "int8_dynamic_activation_int8_weight": torch.int8,
+                "autoquant": None,
+            }
+            return map_to_target_dtype[self.quantization_config.quant_type]
         else:
             raise RuntimeError(
                 f"In order to use safetensors with torchao, please use torchao version >= 0.15.0. Current version: {TORCHAO_VERSION}"
@@ -180,19 +232,91 @@ class TorchAoHfQuantizer(HfQuantizer):
             # Torchao needs access to all metadata later
             self.set_metadata(checkpoint_files)
 
+    def update_unexpected_keys(self, model, unexpected_keys: list[str]) -> list[str]:
+        return [k for k in unexpected_keys if not any(k.endswith(x) for x in self.full_ao_keys)]
+
     def param_needs_quantization(self, model: "PreTrainedModel", param_name: str, **kwargs) -> bool:
         if self.quantization_config.quant_type == "autoquant":
             return False
 
         # check if the param_name is not in self.modules_to_not_convert
-        if not should_convert_module(param_name, self.modules_to_not_convert):
+        if any(key + "." in param_name or key == param_name for key in self.modules_to_not_convert):
             return False
+        elif any(param_name.endswith(f":{x}") for x in self.full_ao_keys):
+            return True
+        else:
+            # we only quantize the weight of nn.Linear and nn.Embedding
+            module, tensor_name = get_module_from_name(model, param_name)
+            _QUANTIZABLE = [torch.nn.Linear]
+            if self.quantization_config.include_input_output_embeddings:
+                _QUANTIZABLE.append(torch.nn.Embedding)
+            return isinstance(module, tuple(_QUANTIZABLE)) and tensor_name == "weight"
 
-        # we only quantize the weight of nn.Linear and nn.Embedding
+    def create_quantized_param(
+        self,
+        model: "PreTrainedModel",
+        param_value: "torch.Tensor",
+        param_name: str,
+        target_device: "torch.device",
+        **kwargs,
+    ):
+        """
+        Each nn.Linear layer that needs to be quantized is processed here.
+        First, we set the value the weight tensor, then we move it to the target device. Finally, we quantize the module.
+        """
+        from torchao.quantization import quantize_
+
+        full_name = param_name
+        # Those are the pre quantized weights
+        if ":" in param_name:
+            param_name = param_name.rsplit(":", 1)[0]
         module, tensor_name = get_module_from_name(model, param_name)
-        _QUANTIZABLE = [torch.nn.Linear]
-        if self.quantization_config.include_input_output_embeddings:
-            _QUANTIZABLE.append(torch.nn.Embedding)
+
+        if self.pre_quantized:
+            # If it's a bias, no need to do anything special (except removing the ":_data" part of the key, but was
+            # already done) - if it's unsafe-serialized (i.e. not safetensors), not need for anything either
+            is_unsafe_serialization = ":" not in full_name
+            if tensor_name == "bias" or is_unsafe_serialization:
+                module._parameters[tensor_name] = torch.nn.Parameter(
+                    param_value.to(target_device), requires_grad=param_value.requires_grad
+                )
+                return
+            # Sanity check for the new serialization format
+            elif not (TORCHAO_VERSION >= version.parse("0.14.0") and is_metadata_torchao(self.metadata)):
+                raise ValueError("To use `safetensors` serialization, you should have `torchao>=0.14.0` installed")
+
+            # Save the states for later quantization when they are all gathered
+            if not hasattr(self, "ao_params"):
+                self.ao_params = defaultdict(dict)
+            self.ao_params[param_name].update({full_name: param_value})
+
+            # We are ready for quantization in this case (we retrieved all the needed keys)
+            if len(self.ao_params[param_name]) == len(self.weight_ao_keys):
+                new_param = unflatten_tensor_state_dict(self.ao_params[param_name], self.metadata)[param_name]
+                # Set it
+                module._parameters[tensor_name] = torch.nn.Parameter(
+                    new_param.to(target_device), requires_grad=new_param.requires_grad
+                )
+
+                # Free memory
+                del self.ao_params[param_name]
+
+            # Add repr to the module
+            if isinstance(module, nn.Linear):
+                module.extra_repr = types.MethodType(_linear_extra_repr, module)
+        else:
+            module._parameters[tensor_name] = torch.nn.Parameter(
+                param_value, requires_grad=param_value.requires_grad
+            ).to(target_device)
+            # if we are quantizing tied parameters, to avoid tying the quantized weights
+            # the correct order to do it is
+            # 1. load the weight to model
+            # 2. run tie_weights to populate the weights
+            # 3. quantize
+            input_embed = model.get_input_embeddings()
+            if self.quantization_config.untie_embedding_weights and id(module) == id(input_embed):
+                model.tie_weights()
+                setattr(model.config.get_text_config(decoder=True), "tie_word_embeddings", False)
 
         # Handle FqnToConfig, introduced in torchao 0.15.0+
         if self.quantization_config._get_ao_version() >= version.parse("0.15.0"):
@@ -228,13 +352,30 @@ class TorchAoHfQuantizer(HfQuantizer):
             return model
         return
 
-    def is_serializable(self) -> bool:
-        _is_torchao_serializable = version.parse("0.15.0") <= TORCHAO_VERSION
-        if not version.parse("0.15.0") <= TORCHAO_VERSION:
+    def is_serializable(self, safe_serialization=None) -> bool:
+        if safe_serialization:
+            _is_torchao_serializable = type(
+                self.quantization_config.quant_type
+            ) in SUPPORTED_SAFE_SERIALIZATION_CONFIGS and TORCHAO_VERSION >= version.parse("0.14.0")
+            if not _is_torchao_serializable:
+                logger.warning(
+                    f"torchao quantized model only supports safe serialization for {SUPPORTED_SAFE_SERIALIZATION_CONFIGS}, \
+                    and torchao version >= 0.14.0, please set `safe_serialization` to False for \
+                    {type(self.quantization_config.quant_type)} and {TORCHAO_VERSION}."
+                )
+            return _is_torchao_serializable
+
+        _is_torchao_serializable = version.parse(importlib.metadata.version("huggingface_hub")) >= version.parse(
+            "0.25.0"
+        )
+        if not _is_torchao_serializable:
+            logger.warning("torchao quantized model is only serializable after huggingface_hub >= 0.25.0 ")
+        if self.offload and self.quantization_config.modules_to_not_convert is None:
             logger.warning(
-                "torchao quantized model only supports serialization for torchao version >= 0.15.0, please upgrade "
-                "your version to save the quantized model"
+                "The model contains offloaded modules and these modules are not quantized. We don't recommend saving the model as we won't be able to reload them."
+                "If you want to specify modules to not quantize, please specify modules_to_not_convert in the quantization_config."
             )
+            return False
         return _is_torchao_serializable
 
     @property
@@ -258,30 +399,3 @@ class TorchAoHfQuantizer(HfQuantizer):
                     metadata.update(metadata_)
             # Save it
             self.metadata = metadata
-
-    def get_quantize_ops(self):
-        from ..integrations.torchao import TorchAoQuantize
-
-        return TorchAoQuantize(self)
-
-    def get_weight_conversions(self):
-        from ..integrations.torchao import TorchAoDeserialize
-
-        if self.pre_quantized:
-            return [
-                WeightConverter(
-                    # TODO: incr flexibility by generalizing the source patterns to match the format of "_weight_"
-                    # note that the matching logic is greedy, so for ex, if _weight_scale is before _weight_scale_and_zero in this list, it will match _weight_scale always (this is incorrect)
-                    # thus, the order of source_patterns is intentional
-                    source_patterns=[
-                        "_weight_qdata",
-                        "_weight_scale_and_zero",
-                        "_weight_scale",
-                        "_weight_zero_point",
-                        "_weight_act_pre_scale",
-                    ],
-                    target_patterns="weight",
-                    operations=[TorchAoDeserialize(self)],
-                ),
-            ]
-        return []

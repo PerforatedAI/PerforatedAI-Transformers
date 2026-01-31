@@ -16,17 +16,18 @@ rendered properly in your Markdown viewer.
 
 # Serve CLI
 
-The `transformers serve` CLI is a lightweight option for local or self-hosted servers. It avoids the extra runtime and operational overhead of dedicated inference engines like vLLM. Use it for evaluation, experimentation, and moderate load deployments. Features like [continuous batching](../continuous_batching) increases throughput and lowers latency.
+Transformer models can be efficiently deployed using libraries such as vLLM, Text Generation Inference (TGI), and others. These libraries are designed for production-grade user-facing services, and can scale to multiple servers and millions of concurrent users. Refer to [Transformers as Backend for Inference Servers](./transformers_as_backend) for usage examples.
 
 > [!TIP]
 > For large scale production deployments, use vLLM, SGLang or TGI with a Transformer model as the backend. Learn more in the [Inference backends](../community_integrations/transformers_as_backend) guide.
 
 The `transformers serve` command spawns a local server compatible with the [OpenAI SDK](https://platform.openai.com/docs/overview). The server works with many third-party applications and supports the REST APIs below.
 
-- `/v1/chat/completions` for text and image requests
-- `/v1/responses` supports the [Responses API](https://platform.openai.com/docs/api-reference/responses)
-- `/v1/audio/transcriptions` for audio transcriptions
-- `/v1/models` lists available models for third-party integrations
+In this document, we dive into the different supported endpoints and modalities; we also cover the setup of several user interfaces that can be used on top of `transformers serve` in the following guides:
+- [Jan (text and MCP user interface)](./jan)
+- [Cursor (IDE)](./cursor)
+- [Open WebUI (text, image, speech user interface)](./open_webui)
+- [Tiny-Agents (text and MCP CLI tool)](./tiny_agents)
 
 Install the serving dependencies.
 
@@ -34,7 +35,16 @@ Install the serving dependencies.
 pip install transformers[serving]
 ```
 
-Run `transformers serve` to launch a server. The default server address is http://localhost:8000.
+You can serve models of diverse modalities supported by `transformers` with the `transformers serve` CLI. It spawns a local server that offers compatibility with the OpenAI SDK, which is the _de facto_ standard for LLM conversations and other related tasks. This way, you can use the server from many third party applications, or test it using the `transformers chat` CLI ([docs](conversations#chat-cli)).
+
+The server supports the following REST APIs:
+
+- `/v1/chat/completions`
+- `/v1/responses`
+- `/v1/audio/transcriptions`
+- `/v1/models`
+
+To launch a server, simply use the `transformers serve` CLI command:
 
 ```shell
 transformers serve
@@ -336,9 +346,7 @@ ResponseCompletedEvent(response=Response(id='resp_req_0', created_at=1754060400.
 </hfoption>
 </hfoptions>
 
-## v1/audio/transcriptions
-
-The `v1/audio/transcriptions` endpoint transcribes audio using speech-to-text models. It follows the [Audio transcription API](https://platform.openai.com/docs/api-reference/audio/createTranscription) format.
+## MCP integration
 
 ```shell
 curl -X POST http://localhost:8000/v1/audio/transcriptions \
@@ -454,7 +462,25 @@ Add the `--force-model <repo_id>` argument to avoid per-request model hints. Thi
 
 ```sh
 transformers serve \
-  --force-model Qwen/Qwen2.5-0.5B-Instruct \
-  --continuous-batching \
-  --dtype "bfloat16"
+  --continuous-batching
+  --attn_implementation sdpa_paged
 ```
+
+### Performance tips
+
+- Use an efficient attention backend when available:
+
+```sh
+transformers serve \
+  --continuous_batching \
+  --attn_implementation paged_attention
+```
+
+> [!TIP]
+> If you choose `paged_attention`, you must install `flash-attn` separately: `pip install flash-attn --no-build-isolation`
+
+- `--dtype {bfloat16|float16}` typically improve throughput and memory use vs. `float32`
+
+- `--load_in_4bit`/`--load_in_8bit` can reduce memory footprint for LoRA setups
+
+- `--force-model <repo_id>` avoids per-request model hints and helps produce stable, repeatable runs

@@ -16,7 +16,7 @@
 from typing import Optional
 
 import torch
-import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms.v2 import functional as F
 
 from ...image_processing_utils import BatchFeature
 from ...image_processing_utils_fast import (
@@ -30,7 +30,25 @@ from ...utils import (
     TensorType,
     auto_docstring,
 )
-from .image_processing_got_ocr2 import GotOcr2ImageProcessorKwargs, get_optimal_tiled_canvas
+from .image_processing_got_ocr2 import get_optimal_tiled_canvas
+
+
+class GotOcr2FastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
+    """
+    crop_to_patches (`bool`, *optional*, defaults to `False`):
+        Whether to crop the image to patches. Can be overridden by the `crop_to_patches` parameter in the
+        `preprocess` method.
+    min_patches (`int`, *optional*, defaults to 1):
+        The minimum number of patches to be extracted from the image. Only has an effect if `crop_to_patches` is
+        set to `True`. Can be overridden by the `min_patches` parameter in the `preprocess` method.
+    max_patches (`int`, *optional*, defaults to 12):
+        The maximum number of patches to be extracted from the image. Only has an effect if `crop_to_patches` is
+        set to `True`. Can be overridden by the `max_patches` parameter in the `preprocess` method.
+    """
+
+    crop_to_patches: Optional[bool]
+    min_patches: Optional[int]
+    max_patches: Optional[int]
 
 
 @auto_docstring

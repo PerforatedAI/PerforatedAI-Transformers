@@ -100,7 +100,6 @@ class Idefics3ProcessorKwargs(ProcessingKwargs, total=False):
     }
 
 
-@auto_docstring
 class Idefics3Processor(ProcessorMixin):
     def __init__(
         self, image_processor, tokenizer=None, image_seq_len: int = 169, chat_template: str | None = None, **kwargs

@@ -591,7 +591,7 @@ class FeatureExtractionMixin(PushToHubMixin):
         return output
 
     @classmethod
-    def from_json_file(cls, json_file: str | os.PathLike) -> "FeatureExtractionMixin":
+    def from_json_file(cls, json_file: Union[str, os.PathLike]) -> "FeatureExtractionMixin":
         """
         Instantiates a feature extractor of type [`~feature_extraction_utils.FeatureExtractionMixin`] from the path to
         a JSON file of parameters.

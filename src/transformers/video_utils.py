@@ -729,7 +729,7 @@ def load_video(
 
 def convert_to_rgb(
     video: np.ndarray,
-    input_data_format: str | ChannelDimension | None = None,
+    input_data_format: Optional[Union[str, ChannelDimension]] = None,
 ) -> np.ndarray:
     """
     Convert video to RGB by blending the transparency layer if it's in RGBA format, otherwise simply returns it.
